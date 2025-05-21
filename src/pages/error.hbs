@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Error</title>
+  <link rel="stylesheet" href="/public/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+</head>
+<body>
+  <div class="container">
+    <div class="toggle-container">
+      <div class="toggle-indicator not-synced"></div>
+    </div>
+    
+    <h1 class="error-title">Error</h1>
+    
+    <div class="problem-label">Problem</div>
+    <div class="error-message">{{error}}</div>
+    
+    <div class="actions-container">
+      <a href="/" class="back-button">Back ↤</a>
+    </div>
+  </div>
+  
+  <script>
+    // Add touchstart event listeners for mobile devices
+    document.querySelectorAll('a').forEach(link => {
+      link.addEventListener('touchstart', function() {
+        this.classList.add('touched');
+      });
+      link.addEventListener('touchend', function() {
+        this.classList.remove('touched');
+      });
+    });
+  </script>
+</body>
+</html>

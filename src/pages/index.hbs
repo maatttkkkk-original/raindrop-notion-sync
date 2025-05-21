@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Raindrop/Notion Sync</title>
+  <link rel="stylesheet" href="/public/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+</head>
+<body>
+  <div class="container">
+    <div class="toggle-container">
+      <div class="toggle-indicator {{#if isSynced}}synced{{else}}not-synced{{/if}}"></div>
+    </div>
+    
+    <h1 class="title">Raindrop/Notion Sync</h1>
+    
+    <div class="raindrop-count {{#if isSynced}}synced-text{{else}}not-synced-text{{/if}}">
+      {{raindropTotal}} Raindrops
+    </div>
+    
+    <div class="notion-count {{#if isSynced}}synced-text{{else}}not-synced-text{{/if}}">
+      {{notionTotal}} Notion Pages
+    </div>
+    
+    <div class="actions-container">
+      <a href="/sync?mode=new" class="sync-new">Sync New ↻</a>
+      <a href="/sync?mode=all" class="full-sync {{#if isSynced}}{{else}}active{{/if}}">Reset / Full</a>
+      {{#unless isSynced}}<a href="/diagnostic" style="display: block; font-size: 1.5rem; margin-top: 1rem; color: #333;">Run Diagnostic ↻</a>{{/unless}}
+    </div>
+  </div>
+  
+  <script>
+    document.querySelectorAll('a').forEach(link => {
+      link.addEventListener('touchstart', function() {
+        this.classList.add('touched');
+      });
+      link.addEventListener('touchend', function() {
+        this.classList.remove('touched');
+      });
+    });
+  </script>
+</body>
+</html>

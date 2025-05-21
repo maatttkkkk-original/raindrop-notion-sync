@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sync Progress</title>
+  <link rel="stylesheet" href="/public/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+</head>
+<body>
+  <div class="container">
+    <div class="toggle-container">
+      <div class="toggle-indicator syncing"></div>
+    </div>
+    
+    <h1 class="sync-title">Sync In Progress</h1>
+    
+    <div class="sync-stats">
+      <span id="added-count">0</span> added, 
+      <span id="updated-count">0</span> updated, 
+      <span id="skipped-count">0</span> skipped
+    </div>
+    
+    <div class="live-updates" id="updates">
+      <div class="sync-item">Starting sync process...</div>
+    </div>
+    
+    <div class="actions-container">
+      <a href="/" class="back-button">Back ↤</a>
+    </div>
+  </div>
+
+  <script>
+    // Auto-scroll to bottom as updates come in
+    function scrollToBottom() {
+      window.scrollTo(0, document.body.scrollHeight);
+    }
+    
+    // Update the counters
+    function updateCounter(type, value) {
+      document.getElementById(type + '-count').textContent = value;
+    }
+    
+    // Add a sync message to the updates list
+    function addSyncMessage(message, type = '') {
+      const updatesDiv = document.getElementById('updates');
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `sync-item ${type || ''}`;
+      messageDiv.textContent = message;
+      updatesDiv.appendChild(messageDiv);
+      scrollToBottom();
+    }
+    
+    // Set up a source for server-sent events
+    let evtSource = null;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 3;
+    
+    function connectEventSource() {
+      evtSource = new EventSource('/sync-stream?mode={{mode}}');
+      
+      evtSource.onmessage = function(event) {
+        try {
+          const data = JSON.parse(event.data);
+          
+          // Add the update message
+          if (data.message) {
+            addSyncMessage(data.message, data.type || '');
+          }
+          
+          // Update counters if needed
+          if (data.counts) {
+            updateCounter('added', data.counts.added || 0);
+            updateCounter('updated', data.counts.updated || 0);
+            updateCounter('skipped', data.counts.skipped || 0);
+          }
+          
+          // If complete, close the connection
+          if (data.complete) {
+            evtSource.close();
+            evtSource = null;
+          }
+        } catch (error) {
+          console.error('Error processing message:', error);
+        }
+      };
+      
+      evtSource.onerror = function(error) {
+        console.error('EventSource error:', error);
+        
+        if (evtSource.readyState === EventSource.CLOSED) {
+          // Connection closed
+          addSyncMessage('Connection closed. The sync is still running in the background. You can return to the dashboard and check back later.', 'failed');
+          
+          // Try to reconnect (unless we've reached our limit)
+          if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts++;
+            addSyncMessage(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, 'skipped');
+            
+            setTimeout(() => {
+              // Clean up old connection
+              if (evtSource) {
+                evtSource.close();
+              }
+              
+              // Reconnect
+              connectEventSource();
+            }, 2000);
+          } else {
+            addSyncMessage('Maximum reconnection attempts reached. Sync will continue in the background.', 'failed');
+            
+            // Add link to go back to dashboard
+            const updatesDiv = document.getElementById('updates');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'sync-item';
+            messageDiv.innerHTML = '<strong>You can safely return to the <a href="/">dashboard</a> now.</strong>';
+            updatesDiv.appendChild(messageDiv);
+          }
+        }
+      };
+      
+      // Set up a ping mechanism to keep connection alive
+      const pingInterval = setInterval(() => {
+        if (evtSource && evtSource.readyState === EventSource.OPEN) {
+          // Send a ping to the server to keep connection alive
+          fetch('/ping').catch(() => {});
+        } else if (!evtSource) {
+          clearInterval(pingInterval);
+        }
+      }, 30000); // 30 seconds
+    }
+    
+    // Start the connection
+    connectEventSource();
+    
+    // Ensure we scroll to bottom on initial load
+    scrollToBottom();
+    
+    // Add touchstart event listeners for mobile devices
+    document.querySelectorAll('a').forEach(link => {
+      link.addEventListener('touchstart', function() {
+        this.classList.add('touched');
+      });
+      link.addEventListener('touchend', function() {
+        this.classList.remove('touched');
+      });
+    });
+  </script>
+</body>
+</html>
