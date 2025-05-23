@@ -18,19 +18,19 @@ const app = Fastify({
 });
 
 // Import service modules
-const raindropService = require('./services/raindrop');
-const notionService = require('./services/notion');
+const raindropService = require('../services/raindrop');
+const notionService = require('../services/notion');
 
 // Register template engine
 app.register(fastifyView, {
   engine: { handlebars },
-  root: path.join(__dirname, 'src/pages'),
+  root: path.join(__dirname, '../src/pages'),
   layout: false
 });
 
 // Serve static files
 app.register(fastifyStatic, {
-  root: path.join(__dirname, 'public'),
+  root: path.join(__dirname, '../public'),
   prefix: '/public/',
   decorateReply: false // prevents conflicts with existing `reply.send`
 });
