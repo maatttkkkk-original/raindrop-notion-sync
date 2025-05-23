@@ -420,6 +420,55 @@ app.get('/ping', async (request, reply) => {
   return { status: 'ok' };
 });
 
+// Diagnostic route to check API connections
+app.get('/diagnostic', async (request, reply) => {
+  const diagnostics = {
+    timestamp: new Date().toISOString(),
+    environment_variables: {
+      RAINDROP_TOKEN: process.env.RAINDROP_TOKEN ? 'Set ✓' : 'Missing ✗',
+      NOTION_TOKEN: process.env.NOTION_TOKEN ? 'Set ✓' : 'Missing ✗',
+      NOTION_DB_ID: process.env.NOTION_DB_ID ? 'Set ✓' : 'Missing ✗'
+    },
+    api_tests: {}
+  };
+
+  // Test Raindrop API connection
+  try {
+    const raindropTotal = await raindropService.getRaindropTotal();
+    diagnostics.api_tests.raindrop = {
+      status: 'Connected ✓',
+      total_items: raindropTotal,
+      message: 'Successfully connected to Raindrop.io API'
+    };
+  } catch (error) {
+    diagnostics.api_tests.raindrop = {
+      status: 'Failed ✗',
+      error: error.message,
+      message: 'Unable to connect to Raindrop.io API'
+    };
+  }
+
+  // Test Notion API connection
+  try {
+    const notionTotal = await notionService.getTotalNotionPages();
+    diagnostics.api_tests.notion = {
+      status: 'Connected ✓',
+      total_pages: notionTotal,
+      message: 'Successfully connected to Notion API'
+    };
+  } catch (error) {
+    diagnostics.api_tests.notion = {
+      status: 'Failed ✗',
+      error: error.message,
+      message: 'Unable to connect to Notion API'
+    };
+  }
+
+  return reply
+    .header('Content-Type', 'application/json')
+    .send(JSON.stringify(diagnostics, null, 2));
+});
+
 // Start the server
 const start = async () => {
   try {
