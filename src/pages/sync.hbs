@@ -2,34 +2,64 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Sync Progress</title>
+  <title>Sync Setup</title>
   <link rel="stylesheet" href="/public/style.css">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 </head>
 <body>
   <div class="container">
     <div class="toggle-container">
-      <div class="toggle-indicator syncing"></div>
+      <div id="status-indicator" class="toggle-indicator not-synced"></div>
     </div>
     
-    <h1 class="sync-title">Sync In Progress</h1>
+    <h1 class="sync-title">{{#if (eq mode "all")}}Full Sync{{else}}Incremental Sync{{/if}}</h1>
     
-    <div class="sync-stats">
-      <span id="added-count">0</span> added, 
-      <span id="updated-count">0</span> updated, 
-      <span id="skipped-count">0</span> skipped
+    <div class="sync-description">
+      {{#if (eq mode "all")}}
+        <p>This will sync ALL your raindrops with Notion. This may take several minutes and process 1,000+ items.</p>
+      {{else}}
+        <p>This will sync recent raindrops (last 24 hours) with Notion. This is usually quick and processes just a few items.</p>
+      {{/if}}
     </div>
     
-    <div class="live-updates" id="updates">
-      <div class="sync-item">Starting sync process...</div>
-    </div>
-    
-    <div class="actions-container">
+    <div id="sync-controls" class="actions-container">
+      <button id="start-sync-btn" class="sync-new">
+        {{#if (eq mode "all")}}Start Full Sync{{else}}Start Incremental Sync{{/if}}
+      </button>
       <a href="/?password={{password}}" class="back-button">Back ↤</a>
+    </div>
+    
+    <div id="sync-progress" class="sync-progress" style="display: none;">
+      <div class="sync-stats">
+        <span id="added-count">0</span> added, 
+        <span id="updated-count">0</span> updated, 
+        <span id="skipped-count">0</span> skipped
+      </div>
+      
+      <div class="live-updates" id="updates">
+        <div class="sync-item">Starting sync process...</div>
+      </div>
+      
+      <div class="actions-container">
+        <button id="cancel-sync-btn" class="back-button" style="background: #e74c3c;">Cancel Sync</button>
+      </div>
     </div>
   </div>
 
   <script>
+    const mode = '{{mode}}';
+    const password = '{{password}}';
+    
+    let evtSource = null;
+    let syncInProgress = false;
+    
+    // Elements
+    const startBtn = document.getElementById('start-sync-btn');
+    const cancelBtn = document.getElementById('cancel-sync-btn');
+    const syncControls = document.getElementById('sync-controls');
+    const syncProgress = document.getElementById('sync-progress');
+    const statusIndicator = document.getElementById('status-indicator');
+    
     // Auto-scroll to bottom as updates come in
     function scrollToBottom() {
       window.scrollTo(0, document.body.scrollHeight);
@@ -50,13 +80,22 @@
       scrollToBottom();
     }
     
-    // Set up a source for server-sent events
-    let evtSource = null;
-    let reconnectAttempts = 0;
-    const MAX_RECONNECT_ATTEMPTS = 3;
-    
-    function connectEventSource() {
-      evtSource = new EventSource('/sync-stream?password={{password}}&mode={{mode}}');
+    // Start the sync process
+    function startSync() {
+      if (syncInProgress) return;
+      
+      syncInProgress = true;
+      
+      // Update UI
+      syncControls.style.display = 'none';
+      syncProgress.style.display = 'block';
+      statusIndicator.className = 'toggle-indicator syncing';
+      
+      // Clear previous messages
+      document.getElementById('updates').innerHTML = '<div class="sync-item">Connecting to sync stream...</div>';
+      
+      // Start EventSource connection
+      evtSource = new EventSource(`/sync-stream?password=${password}&mode=${mode}`);
       
       evtSource.onmessage = function(event) {
         try {
@@ -74,75 +113,72 @@
             updateCounter('skipped', data.counts.skipped || 0);
           }
           
-          // If complete, close the connection
+          // If complete, show completion state
           if (data.complete) {
             evtSource.close();
             evtSource = null;
+            syncInProgress = false;
+            
+            // Update UI to show completion
+            statusIndicator.className = 'toggle-indicator synced';
+            cancelBtn.textContent = 'Return to Dashboard';
+            cancelBtn.style.background = '#27ae60';
+            cancelBtn.onclick = () => window.location.href = `/?password=${password}`;
           }
         } catch (error) {
           console.error('Error processing message:', error);
+          addSyncMessage('Error processing sync message', 'failed');
         }
       };
       
       evtSource.onerror = function(error) {
         console.error('EventSource error:', error);
         
-        if (evtSource.readyState === EventSource.CLOSED) {
-          // Connection closed
-          addSyncMessage('Connection closed. The sync is still running in the background. You can return to the dashboard and check back later.', 'failed');
+        if (evtSource && evtSource.readyState === EventSource.CLOSED) {
+          addSyncMessage('Connection lost. Sync may still be running in the background.', 'failed');
           
-          // Try to reconnect (unless we've reached our limit)
-          if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-            reconnectAttempts++;
-            addSyncMessage(`Attempting to reconnect (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, 'skipped');
-            
-            setTimeout(() => {
-              // Clean up old connection
-              if (evtSource) {
-                evtSource.close();
-              }
-              
-              // Reconnect
-              connectEventSource();
-            }, 2000);
-          } else {
-            addSyncMessage('Maximum reconnection attempts reached. Sync will continue in the background.', 'failed');
-            
-            // Add link to go back to dashboard
-            const updatesDiv = document.getElementById('updates');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'sync-item';
-            messageDiv.innerHTML = '<strong>You can safely return to the <a href="/?password={{password}}">dashboard</a> now.</strong>';
-            updatesDiv.appendChild(messageDiv);
-          }
+          // Allow user to return to dashboard
+          cancelBtn.textContent = 'Return to Dashboard';
+          cancelBtn.style.background = '#f39c12';
+          cancelBtn.onclick = () => window.location.href = `/?password=${password}`;
         }
       };
-      
-      // Set up a ping mechanism to keep connection alive
-      const pingInterval = setInterval(() => {
-        if (evtSource && evtSource.readyState === EventSource.OPEN) {
-          // Send a ping to the server to keep connection alive
-          fetch('/ping').catch(() => {});
-        } else if (!evtSource) {
-          clearInterval(pingInterval);
-        }
-      }, 30000); // 30 seconds
     }
     
-    // Start the connection
-    connectEventSource();
+    // Cancel the sync process
+    function cancelSync() {
+      if (evtSource) {
+        evtSource.close();
+        evtSource = null;
+      }
+      
+      syncInProgress = false;
+      
+      // Return to dashboard
+      window.location.href = `/?password=${password}`;
+    }
     
-    // Ensure we scroll to bottom on initial load
-    scrollToBottom();
+    // Event listeners
+    startBtn.addEventListener('click', startSync);
+    cancelBtn.addEventListener('click', cancelSync);
     
     // Add touchstart event listeners for mobile devices
-    document.querySelectorAll('a').forEach(link => {
-      link.addEventListener('touchstart', function() {
+    document.querySelectorAll('a, button').forEach(element => {
+      element.addEventListener('touchstart', function() {
         this.classList.add('touched');
       });
-      link.addEventListener('touchend', function() {
+      element.addEventListener('touchend', function() {
         this.classList.remove('touched');
       });
+    });
+    
+    // Prevent accidental navigation during sync
+    window.addEventListener('beforeunload', function(e) {
+      if (syncInProgress) {
+        e.preventDefault();
+        e.returnValue = 'Sync is in progress. Are you sure you want to leave?';
+        return e.returnValue;
+      }
     });
   </script>
 </body>
