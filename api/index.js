@@ -81,17 +81,15 @@ function sendSSEData(reply, data) {
   }
 }
 
-// Main dashboard route - SECURED
+// Main dashboard route - SECURED WITH INSTANT LOADING
 app.get('/', { preHandler: requirePassword }, async (request, reply) => {
   try {
-    const raindropTotal = await raindropService.getRaindropTotal();
-    const notionTotal = await notionService.getTotalNotionPages();
-    const isSynced = raindropTotal === notionTotal;
-
+    // Load page instantly with placeholder data
     return reply.view('index.hbs', {
-      raindropTotal,
-      notionTotal,
-      isSynced,
+      raindropTotal: '...',
+      notionTotal: '...',
+      isSynced: false,
+      loading: true,
       password: request.query.password
     });
   } catch (error) {
@@ -99,6 +97,30 @@ app.get('/', { preHandler: requirePassword }, async (request, reply) => {
     return reply.view('error.hbs', {
       error: error.message || 'Unknown error occurred',
       password: request.query.password
+    });
+  }
+});
+
+// NEW: API endpoint to get counts in background
+app.get('/api/counts', { preHandler: requirePassword }, async (request, reply) => {
+  try {
+    console.log('📊 Fetching counts for dashboard...');
+    
+    const raindropTotal = await raindropService.getRaindropTotal();
+    const notionTotal = await notionService.getTotalNotionPages();
+    const isSynced = raindropTotal === notionTotal;
+
+    return reply.send({
+      raindropTotal,
+      notionTotal,
+      isSynced,
+      success: true
+    });
+  } catch (error) {
+    app.log.error('Error fetching counts:', error);
+    return reply.code(500).send({
+      success: false,
+      error: error.message || 'Failed to fetch counts'
     });
   }
 });

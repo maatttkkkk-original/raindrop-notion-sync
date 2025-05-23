@@ -12,20 +12,14 @@
       <div id="status-indicator" class="toggle-indicator not-synced"></div>
     </div>
     
-    <h1 class="sync-title">{{#if (eq mode "all")}}Full Sync{{else}}Incremental Sync{{/if}}</h1>
+    <h1 class="sync-title">Sync Setup</h1>
     
     <div class="sync-description">
-      {{#if (eq mode "all")}}
-        <p>This will sync ALL your raindrops with Notion. This may take several minutes and process 1,000+ items.</p>
-      {{else}}
-        <p>This will sync recent raindrops (last 24 hours) with Notion. This is usually quick and processes just a few items.</p>
-      {{/if}}
+      <p>Ready to sync your raindrops with Notion. Click the button below to begin.</p>
     </div>
     
     <div id="sync-controls" class="actions-container">
-      <button id="start-sync-btn" class="sync-new">
-        {{#if (eq mode "all")}}Start Full Sync{{else}}Start Incremental Sync{{/if}}
-      </button>
+      <button id="start-sync-btn" class="sync-new">Start Sync</button>
       <a href="/?password={{password}}" class="back-button">Back ↤</a>
     </div>
     
