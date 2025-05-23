@@ -23,9 +23,9 @@
     </div>
     
     <div class="actions-container">
-      <a href="/sync?mode=new" class="sync-new">Sync New ↻</a>
-      <a href="/sync?mode=all" class="full-sync {{#if isSynced}}{{else}}active{{/if}}">Reset / Full</a>
-      {{#unless isSynced}}<a href="/diagnostic" style="display: block; font-size: 1.5rem; margin-top: 1rem; color: #333;">Run Diagnostic ↻</a>{{/unless}}
+      <a href="/sync?password={{password}}&mode=new" class="sync-new">Sync New ↻</a>
+      <a href="/sync?password={{password}}&mode=all" class="full-sync {{#if isSynced}}{{else}}active{{/if}}">Reset / Full</a>
+      {{#unless isSynced}}<a href="/diagnostic?password={{password}}" style="display: block; font-size: 1.5rem; margin-top: 1rem; color: #333;">Run Diagnostic ↻</a>{{/unless}}
     </div>
   </div>
   

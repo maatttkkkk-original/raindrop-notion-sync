@@ -25,7 +25,7 @@
     </div>
     
     <div class="actions-container">
-      <a href="/" class="back-button">Back ↤</a>
+      <a href="/?password={{password}}" class="back-button">Back ↤</a>
     </div>
   </div>
 
@@ -56,7 +56,7 @@
     const MAX_RECONNECT_ATTEMPTS = 3;
     
     function connectEventSource() {
-      evtSource = new EventSource('/sync-stream?mode={{mode}}');
+      evtSource = new EventSource('/sync-stream?password={{password}}&mode={{mode}}');
       
       evtSource.onmessage = function(event) {
         try {
@@ -112,7 +112,7 @@
             const updatesDiv = document.getElementById('updates');
             const messageDiv = document.createElement('div');
             messageDiv.className = 'sync-item';
-            messageDiv.innerHTML = '<strong>You can safely return to the <a href="/">dashboard</a> now.</strong>';
+            messageDiv.innerHTML = '<strong>You can safely return to the <a href="/?password={{password}}">dashboard</a> now.</strong>';
             updatesDiv.appendChild(messageDiv);
           }
         }

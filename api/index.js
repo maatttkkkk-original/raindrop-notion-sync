@@ -74,12 +74,14 @@ app.get('/', { preHandler: requirePassword }, async (request, reply) => {
     return reply.view('index.hbs', {
       raindropTotal,
       notionTotal,
-      isSynced
+      isSynced,
+      password: request.query.password
     });
   } catch (error) {
     app.log.error(error);
     return reply.view('error.hbs', {
-      error: error.message || 'Unknown error occurred'
+      error: error.message || 'Unknown error occurred',
+      password: request.query.password
     });
   }
 });
@@ -87,7 +89,10 @@ app.get('/', { preHandler: requirePassword }, async (request, reply) => {
 // Sync page route - SECURED
 app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
   const mode = request.query.mode || 'new';
-  return reply.view('sync.hbs', { mode });
+  return reply.view('sync.hbs', { 
+    mode,
+    password: request.query.password
+  });
 });
 
 // SSE route for streaming sync updates - SECURED
