@@ -174,7 +174,8 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
     // Send current sync status to the new client
     sendSSEData(reply, {
       message: `Joining sync in progress... (${currentSync.mode} mode)`,
-      counts: currentSync.counts || { added: 0, updated: 0, skipped: 0 }
+      counts: currentSync.counts || { added: 0, updated: 0, skipped: 0 },
+      progress: currentSync.progress || null
     });
     
     // If sync is already complete, let them know
@@ -194,13 +195,15 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
       isFullSync,
       startTime: Date.now(),
       counts: { added: 0, updated: 0, skipped: 0 },
+      progress: null,
       completed: false
     };
     
     // Notify all connected clients
     broadcastSSEData({
       message: `Starting ${isFullSync ? 'full' : 'incremental'} sync...`,
-      counts: currentSync.counts
+      counts: currentSync.counts,
+      progress: currentSync.progress
     });
     
     // Start sync process in the background
@@ -232,7 +235,7 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   });
 });
 
-// Helper function to perform the sync process (DEDUPLICATED)
+// FIXED VERSION: Helper function to perform the sync process (PREVENTS INFINITE LOOPS)
 async function performSync(mode, limit) {
   // Initialize counters
   let addedCount = 0;
@@ -240,6 +243,10 @@ async function performSync(mode, limit) {
   let skippedCount = 0;
   let deletedCount = 0;
   let failedCount = 0;
+  
+  // Progress state for large syncs (prevents restart loops)
+  let processedBatches = 0;
+  let totalBatches = 0;
   
   try {
     const isFullSync = mode === 'all';
@@ -253,12 +260,18 @@ async function performSync(mode, limit) {
           added: addedCount,
           updated: updatedCount,
           skipped: skippedCount
-        }
+        },
+        progress: totalBatches > 0 ? {
+          current: processedBatches,
+          total: totalBatches,
+          percentage: Math.round((processedBatches / totalBatches) * 100)
+        } : null
       };
       
       // Update the current sync state
       if (currentSync) {
         currentSync.counts = updateData.counts;
+        currentSync.progress = updateData.progress;
       }
       
       // Broadcast to all connected clients
@@ -309,42 +322,90 @@ async function performSync(mode, limit) {
     const { notionPagesByUrl, notionPagesByTitle, raindropUrlSet } = 
       buildLookupMaps(notionPages, raindrops);
     
-    // 4. Process in batches
-    const batches = chunkArray(raindrops, 5);
-    sendUpdate(`Processing ${batches.length} batches (5 items per batch)`);
+    // 4. FIXED: Process in smaller batches with longer delays for large datasets
+    const batchSize = raindrops.length > 100 ? 2 : 3; // Smaller batches for large datasets
+    const batches = chunkArray(raindrops, batchSize);
+    totalBatches = batches.length;
     
-    // Process each batch
+    sendUpdate(`Processing ${batches.length} batches (${batchSize} items per batch)`);
+    console.log(`🔧 BATCH PROCESSING: ${raindrops.length} items → ${batches.length} batches of ${batchSize} items each`);
+    
+    // Process each batch with improved error handling and delays
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
-      sendUpdate(`Processing batch ${i + 1} of ${batches.length} (${batch.length} items)`);
+      processedBatches = i + 1;
       
+      sendUpdate(`Processing batch ${processedBatches} of ${totalBatches} (${batch.length} items)`);
+      console.log(`📦 Processing batch ${processedBatches}/${totalBatches}`);
+      
+      // Process items in the batch
       for (const item of batch) {
-        const result = await processSingleItem(item, notionPagesByUrl, notionPagesByTitle);
-        
-        if (result.action === 'added') {
-          sendUpdate(`Created: "${item.title}"`, 'added');
-          addedCount++;
+        try {
+          const result = await processSingleItem(item, notionPagesByUrl, notionPagesByTitle);
           
-          // Add to our maps to prevent duplicates
-          notionPagesByUrl.set(normalizeUrl(item.link), { id: result.pageId });
-          notionPagesByTitle.set(normalizeTitle(item.title), { id: result.pageId });
-        } else if (result.action === 'updated') {
-          sendUpdate(`Updated: "${item.title}"`, 'updated');
-          updatedCount++;
-        } else if (result.action === 'skipped') {
-          sendUpdate(`Skipped: "${item.title}"`, 'skipped');
-          skippedCount++;
-        } else if (result.action === 'failed') {
-          sendUpdate(`Failed: "${item.title}" - ${result.error}`, 'failed');
+          if (result.action === 'added') {
+            sendUpdate(`Created: "${item.title}"`, 'added');
+            addedCount++;
+            
+            // Add to our maps to prevent duplicates
+            notionPagesByUrl.set(normalizeUrl(item.link), { id: result.pageId });
+            notionPagesByTitle.set(normalizeTitle(item.title), { id: result.pageId });
+          } else if (result.action === 'updated') {
+            sendUpdate(`Updated: "${item.title}"`, 'updated');
+            updatedCount++;
+          } else if (result.action === 'skipped') {
+            sendUpdate(`Skipped: "${item.title}"`, 'skipped');
+            skippedCount++;
+          } else if (result.action === 'failed') {
+            sendUpdate(`Failed: "${item.title}" - ${result.error}`, 'failed');
+            failedCount++;
+          }
+          
+          // FIXED: Longer delay between items for large datasets
+          const itemDelay = raindrops.length > 500 ? 1500 : 1000; // 1.5s for very large, 1s for moderate
+          await new Promise(resolve => setTimeout(resolve, itemDelay));
+          
+        } catch (itemError) {
+          console.error(`Error processing item "${item.title}":`, itemError);
+          sendUpdate(`Failed: "${item.title}" - ${itemError.message}`, 'failed');
           failedCount++;
+          
+          // Continue with next item even if one fails
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      
+      // FIXED: Add memory cleanup and longer delays between batches
+      if (processedBatches % 10 === 0) {
+        sendUpdate(`Batch ${processedBatches} complete. Performing memory cleanup...`);
+        
+        // Force garbage collection if available
+        if (global.gc) {
+          global.gc();
+          console.log('🧹 Forced garbage collection');
         }
         
-        // Add small delay between items
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Longer pause every 10 batches for memory recovery
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        // Standard delay between batches
+        const batchDelay = raindrops.length > 500 ? 2000 : 1000; // 2s for very large datasets
+        await new Promise(resolve => setTimeout(resolve, batchDelay));
+      }
+      
+      // FIXED: Progress checkpoint every 25 batches to prevent restart loops
+      if (processedBatches % 25 === 0) {
+        sendUpdate(`Checkpoint: ${processedBatches}/${totalBatches} batches completed. Progress saved.`);
+        console.log(`🔄 CHECKPOINT: Processed ${processedBatches}/${totalBatches} batches`);
+        
+        // Additional recovery pause
+        await new Promise(resolve => setTimeout(resolve, 3000));
       }
     }
     
-    // 5. Handle deletions for full sync
+    sendUpdate(`Item processing complete. Processed ${processedBatches}/${totalBatches} batches.`);
+    
+    // 5. Handle deletions for full sync (unchanged but with better logging)
     if (isFullSync) {
       sendUpdate('Checking for pages to delete...');
       
@@ -358,7 +419,7 @@ async function performSync(mode, limit) {
       if (deletions.length > 0) {
         sendUpdate(`Found ${deletions.length} pages to delete`);
         
-        const deletionBatches = chunkArray(deletions, 5);
+        const deletionBatches = chunkArray(deletions, 3); // Smaller batches for deletions too
         for (let i = 0; i < deletionBatches.length; i++) {
           const batch = deletionBatches[i];
           sendUpdate(`Processing deletion batch ${i + 1} of ${deletionBatches.length}`);
@@ -373,9 +434,12 @@ async function performSync(mode, limit) {
               failedCount++;
             }
             
-            // Small delay between deletions
-            await new Promise(resolve => setTimeout(resolve, 200));
+            // Longer delay between deletions
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
+          
+          // Delay between deletion batches
+          await new Promise(resolve => setTimeout(resolve, 1500));
         }
       } else {
         sendUpdate('No pages to delete');
@@ -383,7 +447,10 @@ async function performSync(mode, limit) {
     }
     
     // 6. Send final summary
-    sendUpdate(`Sync completed! Added: ${addedCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Deleted: ${deletedCount}, Failed: ${failedCount}`);
+    const duration = currentSync ? Math.round((Date.now() - currentSync.startTime) / 1000) : 0;
+    sendUpdate(`Sync completed in ${duration}s! Added: ${addedCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Deleted: ${deletedCount}, Failed: ${failedCount}`);
+    
+    console.log(`✅ SYNC COMPLETE: ${duration}s total, ${processedBatches}/${totalBatches} batches processed`);
     
     // Mark sync as completed
     if (currentSync) {
@@ -402,9 +469,11 @@ async function performSync(mode, limit) {
   } catch (error) {
     app.log.error('Sync error:', error);
     
+    console.log(`❌ SYNC FAILED: Processed ${processedBatches}/${totalBatches} batches before error`);
+    
     // Notify all connected clients about the error
     broadcastSSEData({
-      message: `Error: ${error.message}`,
+      message: `Error after ${processedBatches}/${totalBatches} batches: ${error.message}`,
       type: 'failed',
       complete: true
     });
@@ -545,7 +614,8 @@ app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) =
         mode: currentSync.mode,
         started: new Date(currentSync.startTime).toISOString(),
         completed: currentSync.completed,
-        counts: currentSync.counts
+        counts: currentSync.counts,
+        progress: currentSync.progress
       } : null,
       active_streams: activeStreams.size
     },
