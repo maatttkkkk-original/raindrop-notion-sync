@@ -7,6 +7,7 @@ const fastifyView = require('@fastify/view');
 const fastifyStatic = require('@fastify/static');
 const handlebars = require('handlebars');
 const dotenv = require('dotenv');
+const fetch = require('node-fetch');
 
 // Load environment variables
 dotenv.config();
