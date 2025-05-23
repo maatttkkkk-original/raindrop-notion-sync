@@ -134,7 +134,7 @@ app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
   });
 });
 
-// SSE route for streaming sync updates - SECURED WITH DEDUPLICATION
+// SSE route for streaming sync updates - SECURED WITH ANTI-RESTART PROTECTION
 app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   const mode = request.query.mode || 'new';
   const isFullSync = mode === 'all';
@@ -167,62 +167,82 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
     }
   }, 30000); // Send keepalive every 30 seconds
   
-  // Check if there's already a sync running
+  // CRITICAL FIX: Prevent multiple sync starts
   if (currentSync) {
-    console.log(`🔄 Sync already in progress. Connecting client to existing sync...`);
+    if (currentSync.isRunning) {
+      console.log(`🛑 SYNC ALREADY RUNNING - Preventing duplicate start (batch ${currentSync.currentBatch || 0}/${currentSync.totalBatches || 0})`);
+      
+      // Send current sync status to the new client
+      sendSSEData(reply, {
+        message: `Sync already in progress... (${currentSync.mode} mode, batch ${currentSync.currentBatch || 0}/${currentSync.totalBatches || 0})`,
+        counts: currentSync.counts || { added: 0, updated: 0, skipped: 0 },
+        progress: currentSync.progress || null
+      });
+      
+      return; // EXIT HERE - DON'T START ANOTHER SYNC
+    }
     
-    // Send current sync status to the new client
-    sendSSEData(reply, {
-      message: `Joining sync in progress... (${currentSync.mode} mode)`,
-      counts: currentSync.counts || { added: 0, updated: 0, skipped: 0 },
-      progress: currentSync.progress || null
-    });
-    
-    // If sync is already complete, let them know
+    // If sync exists but not running, it completed
     if (currentSync.completed) {
       sendSSEData(reply, {
         message: 'Previous sync completed. You can start a new sync if needed.',
         complete: true
       });
+      return;
     }
-  } else {
-    console.log(`🚀 Starting new ${isFullSync ? 'full' : 'incremental'} sync...`);
-    
-    // Create new sync process
-    currentSync = {
-      mode,
-      limit,
-      isFullSync,
-      startTime: Date.now(),
-      counts: { added: 0, updated: 0, skipped: 0 },
-      progress: null,
-      completed: false
-    };
-    
-    // Notify all connected clients
-    broadcastSSEData({
-      message: `Starting ${isFullSync ? 'full' : 'incremental'} sync...`,
-      counts: currentSync.counts,
-      progress: currentSync.progress
-    });
-    
-    // Start sync process in the background
-    performSync(mode, limit).catch(error => {
+  }
+  
+  console.log(`🚀 Starting new ${isFullSync ? 'full' : 'incremental'} sync...`);
+  
+  // Create new sync process with running flag
+  currentSync = {
+    mode,
+    limit,
+    isFullSync,
+    isRunning: true, // CRITICAL: Prevent duplicates
+    startTime: Date.now(),
+    counts: { added: 0, updated: 0, skipped: 0 },
+    progress: null,
+    currentBatch: 0,
+    totalBatches: 0,
+    completed: false
+  };
+  
+  // Notify all connected clients
+  broadcastSSEData({
+    message: `Starting ${isFullSync ? 'full' : 'incremental'} sync...`,
+    counts: currentSync.counts,
+    progress: currentSync.progress
+  });
+  
+  // Start sync process in the background with better error handling
+  performSync(mode, limit)
+    .then(() => {
+      console.log('✅ Sync completed successfully');
+    })
+    .catch(error => {
+      console.error('❌ SYNC ERROR:', error);
       app.log.error('Sync error:', error);
       
       // Notify all connected clients about the error
       broadcastSSEData({
-        message: `Error: ${error.message}`,
+        message: `Sync failed: ${error.message}`,
         type: 'failed',
         complete: true
       });
       
-      // Clear the current sync
-      currentSync = null;
-      
-      clearInterval(keepAliveInterval);
+      // CRITICAL: Clear the sync on error
+      if (currentSync) {
+        currentSync.isRunning = false;
+        currentSync = null;
+      }
+    })
+    .finally(() => {
+      // Ensure cleanup happens regardless
+      if (currentSync) {
+        currentSync.isRunning = false;
+      }
     });
-  }
   
   // Handle client disconnect
   request.raw.on('close', () => {
@@ -235,8 +255,15 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   });
 });
 
-// FIXED VERSION: Helper function to perform the sync process (PREVENTS INFINITE LOOPS)
+// ANTI-RESTART VERSION: Helper function to perform the sync process
 async function performSync(mode, limit) {
+  console.log(`🔄 performSync starting: mode=${mode}, limit=${limit}`);
+  
+  // Mark as running
+  if (currentSync) {
+    currentSync.isRunning = true;
+  }
+  
   // Initialize counters
   let addedCount = 0;
   let updatedCount = 0;
@@ -253,6 +280,8 @@ async function performSync(mode, limit) {
     
     // Helper to send progress updates to all connected clients
     const sendUpdate = (message, type = '') => {
+      console.log(`📊 UPDATE: ${message}`); // Log all updates for debugging
+      
       const updateData = {
         message,
         type,
@@ -272,24 +301,36 @@ async function performSync(mode, limit) {
       if (currentSync) {
         currentSync.counts = updateData.counts;
         currentSync.progress = updateData.progress;
+        currentSync.currentBatch = processedBatches;
+        currentSync.totalBatches = totalBatches;
       }
       
       // Broadcast to all connected clients
-      broadcastSSEData(updateData);
+      try {
+        broadcastSSEData(updateData);
+      } catch (sseError) {
+        console.error('Error broadcasting SSE data:', sseError);
+        // Don't throw - continue sync even if SSE fails
+      }
     };
     
     // 1. Get raindrops based on the mode
     let raindrops = [];
     
-    if (mode === 'new') {
-      sendUpdate('Fetching recent raindrops from Raindrop.io...');
-      raindrops = await raindropService.getRecentRaindrops();
-    } else if (mode === 'dev') {
-      sendUpdate('Fetching a limited set of raindrops for testing...');
-      raindrops = await raindropService.getAllRaindrops(limit || 5);
-    } else {
-      sendUpdate('Fetching all raindrops from Raindrop.io...');
-      raindrops = await raindropService.getAllRaindrops(limit);
+    try {
+      if (mode === 'new') {
+        sendUpdate('Fetching recent raindrops from Raindrop.io...');
+        raindrops = await raindropService.getRecentRaindrops();
+      } else if (mode === 'dev') {
+        sendUpdate('Fetching a limited set of raindrops for testing...');
+        raindrops = await raindropService.getAllRaindrops(limit || 5);
+      } else {
+        sendUpdate('Fetching all raindrops from Raindrop.io...');
+        raindrops = await raindropService.getAllRaindrops(limit);
+      }
+    } catch (raindropError) {
+      console.error('❌ Error fetching raindrops:', raindropError);
+      throw new Error(`Failed to fetch raindrops: ${raindropError.message}`);
     }
     
     sendUpdate(`Found ${raindrops.length} raindrops to process`);
@@ -300,6 +341,7 @@ async function performSync(mode, limit) {
       // Mark sync as completed
       if (currentSync) {
         currentSync.completed = true;
+        currentSync.isRunning = false;
       }
       
       // Notify all clients that sync is complete
@@ -314,16 +356,23 @@ async function performSync(mode, limit) {
     }
     
     // 2. Get Notion pages
-    sendUpdate('Fetching existing pages from Notion...');
-    const notionPages = await notionService.getNotionPages();
+    let notionPages = [];
+    try {
+      sendUpdate('Fetching existing pages from Notion...');
+      notionPages = await notionService.getNotionPages();
+    } catch (notionError) {
+      console.error('❌ Error fetching Notion pages:', notionError);
+      throw new Error(`Failed to fetch Notion pages: ${notionError.message}`);
+    }
+    
     sendUpdate(`Found ${notionPages.length} Notion pages`);
     
     // 3. Process the raindrops
     const { notionPagesByUrl, notionPagesByTitle, raindropUrlSet } = 
       buildLookupMaps(notionPages, raindrops);
     
-    // 4. FIXED: Process in smaller batches with longer delays for large datasets
-    const batchSize = raindrops.length > 100 ? 2 : 3; // Smaller batches for large datasets
+    // 4. Process in smaller batches with longer delays for large datasets
+    const batchSize = raindrops.length > 100 ? 2 : 3;
     const batches = chunkArray(raindrops, batchSize);
     totalBatches = batches.length;
     
@@ -332,6 +381,12 @@ async function performSync(mode, limit) {
     
     // Process each batch with improved error handling and delays
     for (let i = 0; i < batches.length; i++) {
+      // Check if sync should continue
+      if (!currentSync || !currentSync.isRunning) {
+        console.log('🛑 Sync stopped - currentSync.isRunning = false');
+        throw new Error('Sync was stopped externally');
+      }
+      
       const batch = batches[i];
       processedBatches = i + 1;
       
@@ -339,7 +394,9 @@ async function performSync(mode, limit) {
       console.log(`📦 Processing batch ${processedBatches}/${totalBatches}`);
       
       // Process items in the batch
-      for (const item of batch) {
+      for (let j = 0; j < batch.length; j++) {
+        const item = batch[j];
+        
         try {
           const result = await processSingleItem(item, notionPagesByUrl, notionPagesByTitle);
           
@@ -361,12 +418,12 @@ async function performSync(mode, limit) {
             failedCount++;
           }
           
-          // FIXED: Longer delay between items for large datasets
-          const itemDelay = raindrops.length > 500 ? 1500 : 1000; // 1.5s for very large, 1s for moderate
+          // Delay between items
+          const itemDelay = raindrops.length > 500 ? 1500 : 1000;
           await new Promise(resolve => setTimeout(resolve, itemDelay));
           
         } catch (itemError) {
-          console.error(`Error processing item "${item.title}":`, itemError);
+          console.error(`❌ Error processing item "${item.title}":`, itemError);
           sendUpdate(`Failed: "${item.title}" - ${itemError.message}`, 'failed');
           failedCount++;
           
@@ -375,7 +432,7 @@ async function performSync(mode, limit) {
         }
       }
       
-      // FIXED: Add memory cleanup and longer delays between batches
+      // Memory cleanup and delays between batches
       if (processedBatches % 10 === 0) {
         sendUpdate(`Batch ${processedBatches} complete. Performing memory cleanup...`);
         
@@ -389,11 +446,11 @@ async function performSync(mode, limit) {
         await new Promise(resolve => setTimeout(resolve, 2000));
       } else {
         // Standard delay between batches
-        const batchDelay = raindrops.length > 500 ? 2000 : 1000; // 2s for very large datasets
+        const batchDelay = raindrops.length > 500 ? 2000 : 1000;
         await new Promise(resolve => setTimeout(resolve, batchDelay));
       }
       
-      // FIXED: Progress checkpoint every 25 batches to prevent restart loops
+      // Progress checkpoint every 25 batches
       if (processedBatches % 25 === 0) {
         sendUpdate(`Checkpoint: ${processedBatches}/${totalBatches} batches completed. Progress saved.`);
         console.log(`🔄 CHECKPOINT: Processed ${processedBatches}/${totalBatches} batches`);
@@ -405,7 +462,7 @@ async function performSync(mode, limit) {
     
     sendUpdate(`Item processing complete. Processed ${processedBatches}/${totalBatches} batches.`);
     
-    // 5. Handle deletions for full sync (unchanged but with better logging)
+    // 5. Handle deletions for full sync
     if (isFullSync) {
       sendUpdate('Checking for pages to delete...');
       
@@ -419,7 +476,7 @@ async function performSync(mode, limit) {
       if (deletions.length > 0) {
         sendUpdate(`Found ${deletions.length} pages to delete`);
         
-        const deletionBatches = chunkArray(deletions, 3); // Smaller batches for deletions too
+        const deletionBatches = chunkArray(deletions, 3);
         for (let i = 0; i < deletionBatches.length; i++) {
           const batch = deletionBatches[i];
           sendUpdate(`Processing deletion batch ${i + 1} of ${deletionBatches.length}`);
@@ -455,6 +512,7 @@ async function performSync(mode, limit) {
     // Mark sync as completed
     if (currentSync) {
       currentSync.completed = true;
+      currentSync.isRunning = false;
     }
     
     // Notify all clients that sync is complete
@@ -467,21 +525,35 @@ async function performSync(mode, limit) {
     }, 5000);
     
   } catch (error) {
+    console.error('❌ SYNC ERROR in performSync:', error);
     app.log.error('Sync error:', error);
     
     console.log(`❌ SYNC FAILED: Processed ${processedBatches}/${totalBatches} batches before error`);
     
     // Notify all connected clients about the error
-    broadcastSSEData({
-      message: `Error after ${processedBatches}/${totalBatches} batches: ${error.message}`,
-      type: 'failed',
-      complete: true
-    });
+    try {
+      broadcastSSEData({
+        message: `Error after ${processedBatches}/${totalBatches} batches: ${error.message}`,
+        type: 'failed',
+        complete: true
+      });
+    } catch (broadcastError) {
+      console.error('Error broadcasting failure message:', broadcastError);
+    }
     
     // Clear the current sync
-    currentSync = null;
+    if (currentSync) {
+      currentSync.isRunning = false;
+      currentSync = null;
+    }
     
     throw error;
+  } finally {
+    // Ensure cleanup
+    if (currentSync) {
+      currentSync.isRunning = false;
+    }
+    console.log('🔚 performSync function completed');
   }
 }
 
@@ -614,6 +686,9 @@ app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) =
         mode: currentSync.mode,
         started: new Date(currentSync.startTime).toISOString(),
         completed: currentSync.completed,
+        isRunning: currentSync.isRunning,
+        currentBatch: currentSync.currentBatch,
+        totalBatches: currentSync.totalBatches,
         counts: currentSync.counts,
         progress: currentSync.progress
       } : null,
