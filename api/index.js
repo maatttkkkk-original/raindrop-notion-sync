@@ -21,6 +21,27 @@ const app = Fastify({
 const raindropService = require('../services/raindrop');
 const notionService = require('../services/notion');
 
+// Password Protection Configuration
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'sync2025';
+
+// Middleware to check password
+function requirePassword(request, reply, done) {
+  const password = request.query.password || request.headers.authorization?.replace('Bearer ', '');
+  
+  console.log(`Access attempt with password: ${password ? 'provided' : 'missing'}`);
+  
+  if (password !== ADMIN_PASSWORD) {
+    console.log(`Access denied - incorrect password`);
+    return reply.code(401).send({ 
+      error: 'Unauthorized',
+      message: 'Access denied. Please provide the correct password as a URL parameter: ?password=yourpassword'
+    });
+  }
+  
+  console.log(`Access granted with correct password`);
+  done();
+}
+
 // Register template engine
 app.register(fastifyView, {
   engine: { handlebars },
@@ -43,8 +64,8 @@ function sendSSEData(response, data) {
   response.raw.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-// Main dashboard route
-app.get('/', async (request, reply) => {
+// Main dashboard route - SECURED
+app.get('/', { preHandler: requirePassword }, async (request, reply) => {
   try {
     const raindropTotal = await raindropService.getRaindropTotal();
     const notionTotal = await notionService.getTotalNotionPages();
@@ -63,14 +84,14 @@ app.get('/', async (request, reply) => {
   }
 });
 
-// Sync page route (just serves the template)
-app.get('/sync', async (request, reply) => {
+// Sync page route - SECURED
+app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
   const mode = request.query.mode || 'new';
   return reply.view('sync.hbs', { mode });
 });
 
-// SSE route for streaming sync updates
-app.get('/sync-stream', (request, reply) => {
+// SSE route for streaming sync updates - SECURED
+app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   const mode = request.query.mode || 'new';
   const isFullSync = mode === 'all';
   const limit = parseInt(request.query.limit || '0', 10);
@@ -409,25 +430,26 @@ function normalizeTitle(title) {
 // Helper function to chunk arrays
 function chunkArray(arr, size) {
   const result = [];
-  for (let i = 0; i < arr.length; i += size) {
+  for (let i < arr.length; i += size) {
     result.push(arr.slice(i, i + size));
   }
   return result;
 }
 
-// Add a ping route to keep connections alive
+// Add a ping route to keep connections alive - UNSECURED (for monitoring)
 app.get('/ping', async (request, reply) => {
   return { status: 'ok' };
 });
 
-// Diagnostic route to check API connections
-app.get('/diagnostic', async (request, reply) => {
+// Diagnostic route to check API connections - SECURED
+app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) => {
   const diagnostics = {
     timestamp: new Date().toISOString(),
     environment_variables: {
       RAINDROP_TOKEN: process.env.RAINDROP_TOKEN ? 'Set ✓' : 'Missing ✗',
       NOTION_TOKEN: process.env.NOTION_TOKEN ? 'Set ✓' : 'Missing ✗',
-      NOTION_DB_ID: process.env.NOTION_DB_ID ? 'Set ✓' : 'Missing ✗'
+      NOTION_DB_ID: process.env.NOTION_DB_ID ? 'Set ✓' : 'Missing ✗',
+      ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ? 'Set ✓' : 'Using default'
     },
     api_tests: {}
   };
