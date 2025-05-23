@@ -56,12 +56,29 @@ app.register(fastifyStatic, {
   decorateReply: false // prevents conflicts with existing `reply.send`
 });
 
-// Create a Map to store active sync processes for SSE
-const activeStreams = new Map();
+// SYNC DEDUPLICATION STATE
+let currentSync = null; // Stores active sync process info
+const activeStreams = new Map(); // Stores all connected EventSource streams
 
-// Helper function to send SSE data
-function sendSSEData(response, data) {
-  response.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+// Helper function to send SSE data to all connected streams
+function broadcastSSEData(data) {
+  for (const [streamId, reply] of activeStreams.entries()) {
+    try {
+      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch (error) {
+      console.error(`Error sending to stream ${streamId}:`, error.message);
+      activeStreams.delete(streamId);
+    }
+  }
+}
+
+// Helper function to send SSE data to a specific stream
+function sendSSEData(reply, data) {
+  try {
+    reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+  } catch (error) {
+    console.error('Error sending SSE data:', error);
+  }
 }
 
 // Main dashboard route - SECURED
@@ -95,12 +112,12 @@ app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
   });
 });
 
-// SSE route for streaming sync updates - SECURED
+// SSE route for streaming sync updates - SECURED WITH DEDUPLICATION
 app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   const mode = request.query.mode || 'new';
   const isFullSync = mode === 'all';
   const limit = parseInt(request.query.limit || '0', 10);
-  const streamId = Date.now().toString();
+  const streamId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
   
   // Set headers for SSE
   reply.raw.writeHead(200, {
@@ -109,24 +126,18 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
     'Connection': 'keep-alive'
   });
   
-  // Store the response in activeStreams
+  // Add this stream to active streams
   activeStreams.set(streamId, reply);
-  
-  // Initial message
-  sendSSEData(reply, {
-    message: `Starting ${isFullSync ? 'full' : 'incremental'} sync...`,
-    counts: { added: 0, updated: 0, skipped: 0 }
-  });
+  console.log(`📡 Client connected to sync stream. Active streams: ${activeStreams.size}`);
   
   // Set up keepalive interval to prevent timeout
   const keepAliveInterval = setInterval(() => {
     if (activeStreams.has(streamId)) {
       try {
-        // Send a comment line (not a data event) as a keepalive
         reply.raw.write(": keepalive\n\n");
       } catch (error) {
         clearInterval(keepAliveInterval);
-        console.error('Keepalive error, connection likely closed:', error.message);
+        console.error(`Keepalive error for stream ${streamId}:`, error.message);
         activeStreams.delete(streamId);
       }
     } else {
@@ -134,29 +145,64 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
     }
   }, 30000); // Send keepalive every 30 seconds
   
-  // Start sync process in the background
-  performSync(mode, limit, streamId).catch(error => {
-    app.log.error('Sync error:', error);
+  // Check if there's already a sync running
+  if (currentSync) {
+    console.log(`🔄 Sync already in progress. Connecting client to existing sync...`);
     
-    // Send error to client if stream is still active
-    if (activeStreams.has(streamId)) {
-      sendSSEData(activeStreams.get(streamId), {
+    // Send current sync status to the new client
+    sendSSEData(reply, {
+      message: `Joining sync in progress... (${currentSync.mode} mode)`,
+      counts: currentSync.counts || { added: 0, updated: 0, skipped: 0 }
+    });
+    
+    // If sync is already complete, let them know
+    if (currentSync.completed) {
+      sendSSEData(reply, {
+        message: 'Previous sync completed. You can start a new sync if needed.',
+        complete: true
+      });
+    }
+  } else {
+    console.log(`🚀 Starting new ${isFullSync ? 'full' : 'incremental'} sync...`);
+    
+    // Create new sync process
+    currentSync = {
+      mode,
+      limit,
+      isFullSync,
+      startTime: Date.now(),
+      counts: { added: 0, updated: 0, skipped: 0 },
+      completed: false
+    };
+    
+    // Notify all connected clients
+    broadcastSSEData({
+      message: `Starting ${isFullSync ? 'full' : 'incremental'} sync...`,
+      counts: currentSync.counts
+    });
+    
+    // Start sync process in the background
+    performSync(mode, limit).catch(error => {
+      app.log.error('Sync error:', error);
+      
+      // Notify all connected clients about the error
+      broadcastSSEData({
         message: `Error: ${error.message}`,
         type: 'failed',
         complete: true
       });
       
-      // Remove from active streams
-      activeStreams.delete(streamId);
-    }
-    
-    clearInterval(keepAliveInterval);
-  });
+      // Clear the current sync
+      currentSync = null;
+      
+      clearInterval(keepAliveInterval);
+    });
+  }
   
   // Handle client disconnect
   request.raw.on('close', () => {
     if (activeStreams.has(streamId)) {
-      app.log.info(`Client disconnected from stream ${streamId}, but sync will continue in the background`);
+      console.log(`📡 Client disconnected from stream ${streamId}. Active streams: ${activeStreams.size - 1}`);
       activeStreams.delete(streamId);
     }
     
@@ -164,8 +210,8 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   });
 });
 
-// Helper function to perform the sync process
-async function performSync(mode, limit, streamId) {
+// Helper function to perform the sync process (DEDUPLICATED)
+async function performSync(mode, limit) {
   // Initialize counters
   let addedCount = 0;
   let updatedCount = 0;
@@ -176,19 +222,25 @@ async function performSync(mode, limit, streamId) {
   try {
     const isFullSync = mode === 'all';
     
-    // Helper to send progress updates
+    // Helper to send progress updates to all connected clients
     const sendUpdate = (message, type = '') => {
-      if (activeStreams.has(streamId)) {
-        sendSSEData(activeStreams.get(streamId), {
-          message,
-          type,
-          counts: {
-            added: addedCount,
-            updated: updatedCount,
-            skipped: skippedCount
-          }
-        });
+      const updateData = {
+        message,
+        type,
+        counts: {
+          added: addedCount,
+          updated: updatedCount,
+          skipped: skippedCount
+        }
+      };
+      
+      // Update the current sync state
+      if (currentSync) {
+        currentSync.counts = updateData.counts;
       }
+      
+      // Broadcast to all connected clients
+      broadcastSSEData(updateData);
     };
     
     // 1. Get raindrops based on the mode
@@ -210,11 +262,18 @@ async function performSync(mode, limit, streamId) {
     if (raindrops.length === 0) {
       sendUpdate('No raindrops to process. Sync complete.', 'skipped');
       
-      // Close the stream
-      if (activeStreams.has(streamId)) {
-        sendSSEData(activeStreams.get(streamId), { complete: true });
-        activeStreams.delete(streamId);
+      // Mark sync as completed
+      if (currentSync) {
+        currentSync.completed = true;
       }
+      
+      // Notify all clients that sync is complete
+      broadcastSSEData({ complete: true });
+      
+      // Clear the sync after a delay
+      setTimeout(() => {
+        currentSync = null;
+      }, 5000);
       
       return;
     }
@@ -304,23 +363,32 @@ async function performSync(mode, limit, streamId) {
     // 6. Send final summary
     sendUpdate(`Sync completed! Added: ${addedCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Deleted: ${deletedCount}, Failed: ${failedCount}`);
     
-    // Close the stream
-    if (activeStreams.has(streamId)) {
-      sendSSEData(activeStreams.get(streamId), { complete: true });
-      activeStreams.delete(streamId);
+    // Mark sync as completed
+    if (currentSync) {
+      currentSync.completed = true;
     }
+    
+    // Notify all clients that sync is complete
+    broadcastSSEData({ complete: true });
+    
+    // Clear the sync after a delay to allow clients to see completion
+    setTimeout(() => {
+      currentSync = null;
+      console.log('🧹 Sync process cleared');
+    }, 5000);
+    
   } catch (error) {
     app.log.error('Sync error:', error);
     
-    if (activeStreams.has(streamId)) {
-      sendSSEData(activeStreams.get(streamId), {
-        message: `Error: ${error.message}`,
-        type: 'failed',
-        complete: true
-      });
-      
-      activeStreams.delete(streamId);
-    }
+    // Notify all connected clients about the error
+    broadcastSSEData({
+      message: `Error: ${error.message}`,
+      type: 'failed',
+      complete: true
+    });
+    
+    // Clear the current sync
+    currentSync = null;
     
     throw error;
   }
@@ -450,6 +518,15 @@ app.get('/ping', async (request, reply) => {
 app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) => {
   const diagnostics = {
     timestamp: new Date().toISOString(),
+    sync_status: {
+      active_sync: currentSync ? {
+        mode: currentSync.mode,
+        started: new Date(currentSync.startTime).toISOString(),
+        completed: currentSync.completed,
+        counts: currentSync.counts
+      } : null,
+      active_streams: activeStreams.size
+    },
     environment_variables: {
       RAINDROP_TOKEN: process.env.RAINDROP_TOKEN ? 'Set ✓' : 'Missing ✗',
       NOTION_TOKEN: process.env.NOTION_TOKEN ? 'Set ✓' : 'Missing ✗',
