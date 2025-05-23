@@ -430,7 +430,7 @@ function normalizeTitle(title) {
 // Helper function to chunk arrays
 function chunkArray(arr, size) {
   const result = [];
-  for (let i < arr.length; i += size) {
+  for (let i = 0; i < arr.length; i += size) {
     result.push(arr.slice(i, i + size));
   }
   return result;
