@@ -1,21 +1,24 @@
-
 {
   "name": "raindrop-to-notion-sync",
   "version": "1.0.0",
   "description": "Sync bookmarks between Raindrop.io and Notion",
   "main": "server.js",
   "engines": {
-    "node": "23.11.0"
+    "node": "18.x"
   },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
   "dependencies": {
-    "@fastify/static": "^6.10.1",
-    "@fastify/view": "^8.0.1",
     "dotenv": "^16.3.1",
     "fastify": "^4.29.1",
+    "@fastify/static": "^6.10.1",
+    "@fastify/view": "^8.0.1",
     "handlebars": "^4.7.8",
     "node-fetch": "^2.6.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
   }
 }
