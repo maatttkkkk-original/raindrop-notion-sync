@@ -24,6 +24,11 @@ const notionService = require('../services/notion');
 // Password Protection Configuration
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'sync2025';
 
+// GLOBAL SYNC LOCK VARIABLES
+let GLOBAL_SYNC_LOCK = false;
+let SYNC_START_TIME = null;
+let SYNC_LOCK_ID = null;
+
 // Middleware to check password
 function requirePassword(request, reply, done) {
   const password = request.query.password || request.headers.authorization?.replace('Bearer ', '');
@@ -141,6 +146,13 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   const limit = parseInt(request.query.limit || '0', 10);
   const streamId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
   
+  console.log(`🔗 NEW CLIENT REQUESTING SYNC: ${streamId}, mode: ${mode}`);
+  console.log(`🔒 GLOBAL_SYNC_LOCK: ${GLOBAL_SYNC_LOCK}`);
+  console.log(`📊 currentSync exists: ${!!currentSync}`);
+  if (currentSync) {
+    console.log(`📊 currentSync.isRunning: ${currentSync.isRunning}`);
+  }
+  
   // Set headers for SSE
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -167,39 +179,53 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
     }
   }, 30000); // Send keepalive every 30 seconds
   
-  // CRITICAL FIX: Prevent multiple sync starts
-  if (currentSync) {
-    if (currentSync.isRunning) {
-      console.log(`🛑 SYNC ALREADY RUNNING - Preventing duplicate start (batch ${currentSync.currentBatch || 0}/${currentSync.totalBatches || 0})`);
-      
-      // Send current sync status to the new client
-      sendSSEData(reply, {
-        message: `Sync already in progress... (${currentSync.mode} mode, batch ${currentSync.currentBatch || 0}/${currentSync.totalBatches || 0})`,
-        counts: currentSync.counts || { added: 0, updated: 0, skipped: 0 },
-        progress: currentSync.progress || null
-      });
-      
-      return; // EXIT HERE - DON'T START ANOTHER SYNC
-    }
+  // ULTRA-STRICT: Check multiple conditions to prevent ANY new sync starts
+  if (GLOBAL_SYNC_LOCK) {
+    const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
+    console.log(`🚫 GLOBAL SYNC LOCK ACTIVE - Lock ID: ${SYNC_LOCK_ID}, Duration: ${lockDuration}s`);
     
-    // If sync exists but not running, it completed
-    if (currentSync.completed) {
-      sendSSEData(reply, {
-        message: 'Previous sync completed. You can start a new sync if needed.',
-        complete: true
-      });
-      return;
-    }
+    sendSSEData(reply, {
+      message: `⏸️ Sync already running (${lockDuration}s elapsed). Lock ID: ${SYNC_LOCK_ID}. Please wait...`,
+      type: 'waiting',
+      lockInfo: {
+        locked: true,
+        lockId: SYNC_LOCK_ID,
+        duration: lockDuration
+      }
+    });
+    
+    return; // HARD EXIT - NO NEW SYNC ALLOWED
   }
   
+  if (currentSync && currentSync.isRunning) {
+    const syncDuration = Math.round((Date.now() - currentSync.startTime) / 1000);
+    console.log(`🚫 CURRENT SYNC RUNNING - Duration: ${syncDuration}s, Batch: ${currentSync.currentBatch}/${currentSync.totalBatches}`);
+    
+    sendSSEData(reply, {
+      message: `⏸️ Sync in progress (${syncDuration}s, batch ${currentSync.currentBatch}/${currentSync.totalBatches}). Please wait...`,
+      counts: currentSync.counts || { added: 0, updated: 0, skipped: 0 },
+      progress: currentSync.progress || null,
+      type: 'waiting'
+    });
+    
+    return; // HARD EXIT - NO NEW SYNC ALLOWED
+  }
+  
+  // ULTRA-LOCK: Set global lock BEFORE starting anything
+  GLOBAL_SYNC_LOCK = true;
+  SYNC_START_TIME = Date.now();
+  SYNC_LOCK_ID = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  
+  console.log(`🔐 SETTING GLOBAL SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
   console.log(`🚀 Starting new ${isFullSync ? 'full' : 'incremental'} sync...`);
   
-  // Create new sync process with running flag
+  // Create new sync process with ultra-protection
   currentSync = {
     mode,
     limit,
     isFullSync,
-    isRunning: true, // CRITICAL: Prevent duplicates
+    isRunning: true,
+    lockId: SYNC_LOCK_ID,
     startTime: Date.now(),
     counts: { added: 0, updated: 0, skipped: 0 },
     progress: null,
@@ -210,38 +236,44 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   
   // Notify all connected clients
   broadcastSSEData({
-    message: `Starting ${isFullSync ? 'full' : 'incremental'} sync...`,
+    message: `🔒 Starting ${isFullSync ? 'full' : 'incremental'} sync (Lock ID: ${SYNC_LOCK_ID})...`,
     counts: currentSync.counts,
-    progress: currentSync.progress
+    progress: currentSync.progress,
+    lockInfo: {
+      locked: true,
+      lockId: SYNC_LOCK_ID,
+      duration: 0
+    }
   });
   
-  // Start sync process in the background with better error handling
-  performSync(mode, limit)
+  // Start sync process with ultra-protection
+  performSyncUltraLocked(mode, limit)
     .then(() => {
-      console.log('✅ Sync completed successfully');
+      console.log(`✅ Sync completed successfully - Lock ID: ${SYNC_LOCK_ID}`);
     })
     .catch(error => {
-      console.error('❌ SYNC ERROR:', error);
+      console.error(`❌ SYNC ERROR - Lock ID: ${SYNC_LOCK_ID}:`, error);
       app.log.error('Sync error:', error);
       
       // Notify all connected clients about the error
       broadcastSSEData({
-        message: `Sync failed: ${error.message}`,
+        message: `Sync failed (Lock ID: ${SYNC_LOCK_ID}): ${error.message}`,
         type: 'failed',
         complete: true
       });
+    })
+    .finally(() => {
+      // ULTRA-CRITICAL: Always release lock
+      console.log(`🔓 RELEASING GLOBAL SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
+      GLOBAL_SYNC_LOCK = false;
+      SYNC_START_TIME = null;
       
-      // CRITICAL: Clear the sync on error
       if (currentSync) {
         currentSync.isRunning = false;
         currentSync = null;
       }
-    })
-    .finally(() => {
-      // Ensure cleanup happens regardless
-      if (currentSync) {
-        currentSync.isRunning = false;
-      }
+      
+      console.log(`🔓 Lock released. GLOBAL_SYNC_LOCK: ${GLOBAL_SYNC_LOCK}`);
     });
   
   // Handle client disconnect
@@ -255,13 +287,14 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   });
 });
 
-// ANTI-RESTART VERSION: Helper function to perform the sync process
-async function performSync(mode, limit) {
-  console.log(`🔄 performSync starting: mode=${mode}, limit=${limit}`);
+// ULTRA-LOCKED VERSION of performSync
+async function performSyncUltraLocked(mode, limit) {
+  const lockId = currentSync ? currentSync.lockId : 'unknown';
+  console.log(`🔄 performSyncUltraLocked starting - Lock ID: ${lockId}, mode: ${mode}, limit: ${limit}`);
   
-  // Mark as running
-  if (currentSync) {
-    currentSync.isRunning = true;
+  // Double-check lock
+  if (!GLOBAL_SYNC_LOCK) {
+    throw new Error('Sync started without global lock - aborting');
   }
   
   // Initialize counters
@@ -270,34 +303,33 @@ async function performSync(mode, limit) {
   let skippedCount = 0;
   let deletedCount = 0;
   let failedCount = 0;
-  
-  // Progress state for large syncs (prevents restart loops)
   let processedBatches = 0;
   let totalBatches = 0;
   
   try {
     const isFullSync = mode === 'all';
     
-    // Helper to send progress updates to all connected clients
+    // Helper to send progress updates
     const sendUpdate = (message, type = '') => {
-      console.log(`📊 UPDATE: ${message}`); // Log all updates for debugging
+      console.log(`📊 [${lockId}] UPDATE: ${message}`);
       
       const updateData = {
-        message,
+        message: `[${lockId}] ${message}`,
         type,
-        counts: {
-          added: addedCount,
-          updated: updatedCount,
-          skipped: skippedCount
-        },
+        counts: { added: addedCount, updated: updatedCount, skipped: skippedCount },
         progress: totalBatches > 0 ? {
           current: processedBatches,
           total: totalBatches,
           percentage: Math.round((processedBatches / totalBatches) * 100)
-        } : null
+        } : null,
+        lockInfo: {
+          locked: GLOBAL_SYNC_LOCK,
+          lockId: lockId,
+          duration: SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0
+        }
       };
       
-      // Update the current sync state
+      // Update current sync state
       if (currentSync) {
         currentSync.counts = updateData.counts;
         currentSync.progress = updateData.progress;
@@ -305,18 +337,16 @@ async function performSync(mode, limit) {
         currentSync.totalBatches = totalBatches;
       }
       
-      // Broadcast to all connected clients
+      // Broadcast with lock protection
       try {
         broadcastSSEData(updateData);
       } catch (sseError) {
-        console.error('Error broadcasting SSE data:', sseError);
-        // Don't throw - continue sync even if SSE fails
+        console.error(`Error broadcasting SSE data for lock ${lockId}:`, sseError);
       }
     };
     
-    // 1. Get raindrops based on the mode
+    // 1. Get raindrops
     let raindrops = [];
-    
     try {
       if (mode === 'new') {
         sendUpdate('Fetching recent raindrops from Raindrop.io...');
@@ -329,7 +359,7 @@ async function performSync(mode, limit) {
         raindrops = await raindropService.getAllRaindrops(limit);
       }
     } catch (raindropError) {
-      console.error('❌ Error fetching raindrops:', raindropError);
+      console.error(`❌ [${lockId}] Error fetching raindrops:`, raindropError);
       throw new Error(`Failed to fetch raindrops: ${raindropError.message}`);
     }
     
@@ -337,21 +367,7 @@ async function performSync(mode, limit) {
     
     if (raindrops.length === 0) {
       sendUpdate('No raindrops to process. Sync complete.', 'skipped');
-      
-      // Mark sync as completed
-      if (currentSync) {
-        currentSync.completed = true;
-        currentSync.isRunning = false;
-      }
-      
-      // Notify all clients that sync is complete
       broadcastSSEData({ complete: true });
-      
-      // Clear the sync after a delay
-      setTimeout(() => {
-        currentSync = null;
-      }, 5000);
-      
       return;
     }
     
@@ -361,37 +377,40 @@ async function performSync(mode, limit) {
       sendUpdate('Fetching existing pages from Notion...');
       notionPages = await notionService.getNotionPages();
     } catch (notionError) {
-      console.error('❌ Error fetching Notion pages:', notionError);
+      console.error(`❌ [${lockId}] Error fetching Notion pages:`, notionError);
       throw new Error(`Failed to fetch Notion pages: ${notionError.message}`);
     }
     
     sendUpdate(`Found ${notionPages.length} Notion pages`);
     
-    // 3. Process the raindrops
+    // 3. Build lookup maps
     const { notionPagesByUrl, notionPagesByTitle, raindropUrlSet } = 
       buildLookupMaps(notionPages, raindrops);
     
-    // 4. Process in smaller batches with longer delays for large datasets
+    // 4. Process in batches WITH LOCK CHECKS
     const batchSize = raindrops.length > 100 ? 2 : 3;
     const batches = chunkArray(raindrops, batchSize);
     totalBatches = batches.length;
     
     sendUpdate(`Processing ${batches.length} batches (${batchSize} items per batch)`);
-    console.log(`🔧 BATCH PROCESSING: ${raindrops.length} items → ${batches.length} batches of ${batchSize} items each`);
+    console.log(`🔧 [${lockId}] BATCH PROCESSING: ${raindrops.length} items → ${batches.length} batches`);
     
-    // Process each batch with improved error handling and delays
+    // Process each batch with LOCK VERIFICATION
     for (let i = 0; i < batches.length; i++) {
-      // Check if sync should continue
+      // ULTRA-CHECK: Verify lock is still held
+      if (!GLOBAL_SYNC_LOCK) {
+        throw new Error(`Global lock lost during processing at batch ${i + 1}`);
+      }
+      
       if (!currentSync || !currentSync.isRunning) {
-        console.log('🛑 Sync stopped - currentSync.isRunning = false');
-        throw new Error('Sync was stopped externally');
+        throw new Error(`Sync state lost during processing at batch ${i + 1}`);
       }
       
       const batch = batches[i];
       processedBatches = i + 1;
       
       sendUpdate(`Processing batch ${processedBatches} of ${totalBatches} (${batch.length} items)`);
-      console.log(`📦 Processing batch ${processedBatches}/${totalBatches}`);
+      console.log(`📦 [${lockId}] Processing batch ${processedBatches}/${totalBatches}`);
       
       // Process items in the batch
       for (let j = 0; j < batch.length; j++) {
@@ -403,8 +422,6 @@ async function performSync(mode, limit) {
           if (result.action === 'added') {
             sendUpdate(`Created: "${item.title}"`, 'added');
             addedCount++;
-            
-            // Add to our maps to prevent duplicates
             notionPagesByUrl.set(normalizeUrl(item.link), { id: result.pageId });
             notionPagesByTitle.set(normalizeTitle(item.title), { id: result.pageId });
           } else if (result.action === 'updated') {
@@ -418,51 +435,46 @@ async function performSync(mode, limit) {
             failedCount++;
           }
           
-          // Delay between items
-          const itemDelay = raindrops.length > 500 ? 1500 : 1000;
+          // LONGER DELAYS - be more conservative
+          const itemDelay = raindrops.length > 500 ? 2000 : 1500; // 2s for large, 1.5s for moderate
           await new Promise(resolve => setTimeout(resolve, itemDelay));
           
         } catch (itemError) {
-          console.error(`❌ Error processing item "${item.title}":`, itemError);
+          console.error(`❌ [${lockId}] Error processing item "${item.title}":`, itemError);
           sendUpdate(`Failed: "${item.title}" - ${itemError.message}`, 'failed');
           failedCount++;
-          
-          // Continue with next item even if one fails
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
       
-      // Memory cleanup and delays between batches
-      if (processedBatches % 10 === 0) {
+      // Enhanced memory cleanup and delays
+      if (processedBatches % 5 === 0) { // More frequent cleanup
         sendUpdate(`Batch ${processedBatches} complete. Performing memory cleanup...`);
         
-        // Force garbage collection if available
         if (global.gc) {
           global.gc();
-          console.log('🧹 Forced garbage collection');
+          console.log(`🧹 [${lockId}] Forced garbage collection`);
         }
         
-        // Longer pause every 10 batches for memory recovery
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Longer pause for memory recovery
+        await new Promise(resolve => setTimeout(resolve, 3000));
       } else {
-        // Standard delay between batches
-        const batchDelay = raindrops.length > 500 ? 2000 : 1000;
+        // Standard delay between batches - be more conservative
+        const batchDelay = raindrops.length > 500 ? 3000 : 2000; // 3s for large, 2s for moderate
         await new Promise(resolve => setTimeout(resolve, batchDelay));
       }
       
-      // Progress checkpoint every 25 batches
-      if (processedBatches % 25 === 0) {
-        sendUpdate(`Checkpoint: ${processedBatches}/${totalBatches} batches completed. Progress saved.`);
-        console.log(`🔄 CHECKPOINT: Processed ${processedBatches}/${totalBatches} batches`);
-        
-        // Additional recovery pause
-        await new Promise(resolve => setTimeout(resolve, 3000));
+      // More frequent checkpoints
+      if (processedBatches % 10 === 0) { // Every 10 batches instead of 25
+        sendUpdate(`Checkpoint: ${processedBatches}/${totalBatches} batches completed.`);
+        console.log(`🔄 [${lockId}] CHECKPOINT: Processed ${processedBatches}/${totalBatches} batches`);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // 5s checkpoint pause
       }
     }
     
     sendUpdate(`Item processing complete. Processed ${processedBatches}/${totalBatches} batches.`);
     
-    // 5. Handle deletions for full sync
+    // Handle deletions for full sync
     if (isFullSync) {
       sendUpdate('Checking for pages to delete...');
       
@@ -503,57 +515,30 @@ async function performSync(mode, limit) {
       }
     }
     
-    // 6. Send final summary
-    const duration = currentSync ? Math.round((Date.now() - currentSync.startTime) / 1000) : 0;
+    // Final summary
+    const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
     sendUpdate(`Sync completed in ${duration}s! Added: ${addedCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Deleted: ${deletedCount}, Failed: ${failedCount}`);
     
-    console.log(`✅ SYNC COMPLETE: ${duration}s total, ${processedBatches}/${totalBatches} batches processed`);
+    console.log(`✅ [${lockId}] SYNC COMPLETE: ${duration}s total, ${processedBatches}/${totalBatches} batches`);
     
-    // Mark sync as completed
+    // Mark as completed
     if (currentSync) {
       currentSync.completed = true;
       currentSync.isRunning = false;
     }
     
-    // Notify all clients that sync is complete
     broadcastSSEData({ complete: true });
     
-    // Clear the sync after a delay to allow clients to see completion
-    setTimeout(() => {
-      currentSync = null;
-      console.log('🧹 Sync process cleared');
-    }, 5000);
-    
   } catch (error) {
-    console.error('❌ SYNC ERROR in performSync:', error);
-    app.log.error('Sync error:', error);
+    console.error(`❌ [${lockId}] SYNC ERROR:`, error);
     
-    console.log(`❌ SYNC FAILED: Processed ${processedBatches}/${totalBatches} batches before error`);
-    
-    // Notify all connected clients about the error
-    try {
-      broadcastSSEData({
-        message: `Error after ${processedBatches}/${totalBatches} batches: ${error.message}`,
-        type: 'failed',
-        complete: true
-      });
-    } catch (broadcastError) {
-      console.error('Error broadcasting failure message:', broadcastError);
-    }
-    
-    // Clear the current sync
-    if (currentSync) {
-      currentSync.isRunning = false;
-      currentSync = null;
-    }
+    broadcastSSEData({
+      message: `Error in sync ${lockId} after ${processedBatches}/${totalBatches} batches: ${error.message}`,
+      type: 'failed',
+      complete: true
+    });
     
     throw error;
-  } finally {
-    // Ensure cleanup
-    if (currentSync) {
-      currentSync.isRunning = false;
-    }
-    console.log('🔚 performSync function completed');
   }
 }
 
@@ -692,7 +677,9 @@ app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) =
         counts: currentSync.counts,
         progress: currentSync.progress
       } : null,
-      active_streams: activeStreams.size
+      active_streams: activeStreams.size,
+      global_sync_lock: GLOBAL_SYNC_LOCK,
+      sync_lock_id: SYNC_LOCK_ID
     },
     environment_variables: {
       RAINDROP_TOKEN: process.env.RAINDROP_TOKEN ? 'Set ✓' : 'Missing ✗',
@@ -738,6 +725,219 @@ app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) =
   return reply
     .header('Content-Type', 'application/json')
     .send(JSON.stringify(diagnostics, null, 2));
+});
+
+// Sync Debug Route - SECURED
+app.get('/sync-debug', { preHandler: requirePassword }, async (request, reply) => {
+  const debug = {
+    timestamp: new Date().toISOString(),
+    globalSyncLock: GLOBAL_SYNC_LOCK || false,
+    syncStartTime: SYNC_START_TIME,
+    syncLockId: SYNC_LOCK_ID,
+    currentSync: currentSync ? {
+      mode: currentSync.mode,
+      isRunning: currentSync.isRunning,
+      completed: currentSync.completed,
+      lockId: currentSync.lockId,
+      startTime: new Date(currentSync.startTime).toISOString(),
+      currentBatch: currentSync.currentBatch,
+      totalBatches: currentSync.totalBatches,
+      counts: currentSync.counts
+    } : null,
+    activeStreams: {
+      count: activeStreams.size,
+      streamIds: Array.from(activeStreams.keys())
+    },
+    suggestions: []
+  };
+  
+  // Add suggestions based on current state
+  if (GLOBAL_SYNC_LOCK) {
+    const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
+    debug.suggestions.push(`Sync locked for ${lockDuration}s - this is normal during active sync`);
+  }
+  
+  if (activeStreams.size > 1) {
+    debug.suggestions.push(`⚠️ Multiple streams (${activeStreams.size}) detected - this might cause restart issues`);
+  }
+  
+  if (!GLOBAL_SYNC_LOCK && !currentSync) {
+    debug.suggestions.push('✅ No active sync - ready to start new sync');
+  }
+  
+  return reply
+    .header('Content-Type', 'application/json')
+    .send(JSON.stringify(debug, null, 2));
+});
+
+// Test Sync Lock Route - SECURED
+app.get('/test-sync-lock', { preHandler: requirePassword }, async (request, reply) => {
+  const action = request.query.action;
+  
+  if (action === 'set') {
+    GLOBAL_SYNC_LOCK = true;
+    SYNC_START_TIME = Date.now();
+    SYNC_LOCK_ID = `test_${Date.now()}`;
+    return reply.send({ message: 'Lock set', lockId: SYNC_LOCK_ID });
+  }
+  
+  if (action === 'clear') {
+    GLOBAL_SYNC_LOCK = false;
+    SYNC_START_TIME = null;
+    const oldLockId = SYNC_LOCK_ID;
+    SYNC_LOCK_ID = null;
+    return reply.send({ message: 'Lock cleared', previousLockId: oldLockId });
+  }
+  
+  return reply.send({ 
+    message: 'Use ?action=set or ?action=clear', 
+    currentLock: GLOBAL_SYNC_LOCK,
+    lockId: SYNC_LOCK_ID 
+  });
+});
+
+// Minimal Sync Stream Route - SECURED (for testing)
+app.get('/sync-stream-minimal', { preHandler: requirePassword }, (request, reply) => {
+  const mode = request.query.mode || 'new';
+  const streamId = Date.now().toString();
+  
+  console.log(`🔍 MINIMAL SYNC REQUEST: mode=${mode}, streamId=${streamId}`);
+  console.log(`🔍 Current state: currentSync exists=${!!currentSync}, GLOBAL_SYNC_LOCK=${GLOBAL_SYNC_LOCK}`);
+  
+  // Set headers for SSE
+  reply.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
+  });
+  
+  // HARD BLOCK: If any sync exists, refuse
+  if (currentSync || GLOBAL_SYNC_LOCK) {
+    console.log(`🚫 BLOCKING SYNC REQUEST - currentSync: ${!!currentSync}, GLOBAL_SYNC_LOCK: ${GLOBAL_SYNC_LOCK}`);
+    
+    reply.raw.write(`data: ${JSON.stringify({
+      message: `❌ SYNC BLOCKED: Another sync is active. Please wait and try again later.`,
+      type: 'blocked',
+      complete: true,
+      debug: {
+        currentSyncExists: !!currentSync,
+        globalLock: GLOBAL_SYNC_LOCK,
+        streamId: streamId
+      }
+    })}\n\n`);
+    
+    setTimeout(() => {
+      try {
+        reply.raw.end();
+      } catch (e) {
+        console.error('Error ending blocked response:', e);
+      }
+    }, 1000);
+    
+    return;
+  }
+  
+  // IMMEDIATE response without starting sync
+  reply.raw.write(`data: ${JSON.stringify({
+    message: `✅ Sync request accepted for mode: ${mode}. Starting in 5 seconds...`,
+    type: 'preparing',
+    streamId: streamId
+  })}\n\n`);
+  
+  // Wait 5 seconds, then check again before starting
+  setTimeout(() => {
+    if (currentSync || GLOBAL_SYNC_LOCK) {
+      console.log(`🚫 LATE BLOCK - Another sync started during preparation`);
+      
+      reply.raw.write(`data: ${JSON.stringify({
+        message: `❌ Another sync started during preparation. Request cancelled.`,
+        type: 'blocked',
+        complete: true
+      })}\n\n`);
+      
+      try {
+        reply.raw.end();
+      } catch (e) {
+        console.error('Error ending late blocked response:', e);
+      }
+      
+      return;
+    }
+    
+    // Set locks IMMEDIATELY
+    GLOBAL_SYNC_LOCK = true;
+    SYNC_START_TIME = Date.now();
+    SYNC_LOCK_ID = `minimal_${streamId}`;
+    
+    console.log(`🔐 SETTING LOCKS - SYNC_LOCK_ID: ${SYNC_LOCK_ID}`);
+    
+    // NOW start the sync
+    reply.raw.write(`data: ${JSON.stringify({
+      message: `🚀 Starting ${mode} sync now (Lock ID: ${SYNC_LOCK_ID})...`,
+      type: 'starting',
+      lockId: SYNC_LOCK_ID
+    })}\n\n`);
+    
+    // Set currentSync IMMEDIATELY
+    currentSync = {
+      mode,
+      isRunning: true,
+      lockId: SYNC_LOCK_ID,
+      startTime: Date.now(),
+      counts: { added: 0, updated: 0, skipped: 0 },
+      currentBatch: 0,
+      totalBatches: 0,
+      completed: false
+    };
+    
+    // Start actual sync using the ultra-locked version
+    performSyncUltraLocked(mode, 0)
+      .then(() => {
+        console.log(`✅ Minimal sync completed - Lock ID: ${SYNC_LOCK_ID}`);
+        
+        reply.raw.write(`data: ${JSON.stringify({
+          message: `✅ Sync completed successfully!`,
+          type: 'completed',
+          complete: true,
+          lockId: SYNC_LOCK_ID
+        })}\n\n`);
+      })
+      .catch(error => {
+        console.error(`❌ Minimal sync failed - Lock ID: ${SYNC_LOCK_ID}:`, error);
+        
+        reply.raw.write(`data: ${JSON.stringify({
+          message: `❌ Sync failed: ${error.message}`,
+          type: 'failed',
+          complete: true,
+          lockId: SYNC_LOCK_ID
+        })}\n\n`);
+      })
+      .finally(() => {
+        // Release locks
+        console.log(`🔓 RELEASING LOCKS - Lock ID: ${SYNC_LOCK_ID}`);
+        GLOBAL_SYNC_LOCK = false;
+        SYNC_START_TIME = null;
+        SYNC_LOCK_ID = null;
+        
+        if (currentSync) {
+          currentSync.isRunning = false;
+          currentSync = null;
+        }
+        
+        // Close the connection
+        try {
+          reply.raw.end();
+        } catch (e) {
+          console.error('Error ending response:', e);
+        }
+      });
+    
+  }, 5000);
+  
+  // Handle disconnect
+  request.raw.on('close', () => {
+    console.log(`📡 Minimal sync client ${streamId} disconnected`);
+  });
 });
 
 // Start the server
