@@ -139,16 +139,6 @@ app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
   });
 });
 
-// CHUNKED SYNC API - Add after /sync route
-app.get('/sync-chunked', { preHandler: requirePassword }, (request, reply) => {
-  // [The clean API code I provided above]
-});
-
-async function performChunkedSync(mode, chunkSize, startOffset, streamId, reply) {
-  // [The performChunkedSync function from above]
-}
-
-
 // Chunked sync page route - SECURED
 app.get('/sync-chunked-page', { preHandler: requirePassword }, async (request, reply) => {
   const mode = request.query.mode || 'all';
@@ -158,6 +148,236 @@ app.get('/sync-chunked-page', { preHandler: requirePassword }, async (request, r
   });
 });
 
+// CHUNKED SYNC API ROUTE - Processes large datasets in small chunks
+app.get('/sync-chunked', { preHandler: requirePassword }, (request, reply) => {
+  const mode = request.query.mode || 'new';
+  const chunkSize = parseInt(request.query.chunkSize || '100', 10);
+  const startOffset = parseInt(request.query.offset || '0', 10);
+  const streamId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+  
+  console.log(`🧩 CHUNKED SYNC REQUEST: mode=${mode}, chunkSize=${chunkSize}, offset=${startOffset}`);
+  
+  // Set headers for SSE
+  reply.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
+  });
+  
+  // Add this stream to active streams
+  activeStreams.set(streamId, reply);
+  console.log(`📡 Chunked client connected. Active streams: ${activeStreams.size}`);
+  
+  // Keepalive interval
+  const keepAliveInterval = setInterval(() => {
+    if (activeStreams.has(streamId)) {
+      try {
+        reply.raw.write(": keepalive\n\n");
+      } catch (error) {
+        clearInterval(keepAliveInterval);
+        activeStreams.delete(streamId);
+      }
+    } else {
+      clearInterval(keepAliveInterval);
+    }
+  }, 15000);
+  
+  // Check if another chunked sync is running
+  if (GLOBAL_SYNC_LOCK) {
+    sendSSEData(reply, {
+      message: `⏸️ Another sync chunk is running. Please wait...`,
+      type: 'waiting',
+      complete: true
+    });
+    return;
+  }
+  
+  // Start chunked processing
+  performChunkedSync(mode, chunkSize, startOffset, streamId, reply)
+    .catch(error => {
+      console.error(`❌ Chunked sync error:`, error);
+      sendSSEData(reply, {
+        message: `Chunk failed: ${error.message}`,
+        type: 'failed',
+        complete: true
+      });
+    })
+    .finally(() => {
+      clearInterval(keepAliveInterval);
+      activeStreams.delete(streamId);
+    });
+  
+  // Handle client disconnect
+  request.raw.on('close', () => {
+    clearInterval(keepAliveInterval);
+    activeStreams.delete(streamId);
+    console.log(`📡 Chunked client ${streamId} disconnected`);
+  });
+});
+
+// CHUNKED SYNC PROCESSOR FUNCTION
+async function performChunkedSync(mode, chunkSize, startOffset, streamId, reply) {
+  const chunkId = `chunk_${streamId}_${startOffset}`;
+  console.log(`🧩 Starting chunk: ${chunkId}`);
+  
+  // Set lock for this chunk
+  GLOBAL_SYNC_LOCK = true;
+  SYNC_START_TIME = Date.now();
+  SYNC_LOCK_ID = chunkId;
+  
+  let addedCount = 0;
+  let updatedCount = 0;
+  let skippedCount = 0;
+  let failedCount = 0;
+  
+  try {
+    // Helper to send updates
+    const sendUpdate = (message, type = '') => {
+      console.log(`🧩 [${chunkId}] ${message}`);
+      sendSSEData(reply, {
+        message: `[${chunkId}] ${message}`,
+        type,
+        counts: { added: addedCount, updated: updatedCount, skipped: skippedCount },
+        chunkInfo: {
+          chunkId,
+          startOffset,
+          chunkSize
+        }
+      });
+    };
+    
+    // 1. Get ALL raindrops first (to know total count)
+    let allRaindrops = [];
+    try {
+      if (mode === 'new') {
+        sendUpdate('Fetching recent raindrops...');
+        allRaindrops = await raindropService.getRecentRaindrops();
+      } else {
+        sendUpdate('Fetching all raindrops...');
+        allRaindrops = await raindropService.getAllRaindrops();
+      }
+    } catch (error) {
+      throw new Error(`Failed to fetch raindrops: ${error.message}`);
+    }
+    
+    sendUpdate(`Found ${allRaindrops.length} total raindrops`);
+    
+    // 2. Calculate chunk boundaries
+    const totalItems = allRaindrops.length;
+    const endOffset = Math.min(startOffset + chunkSize, totalItems);
+    const isLastChunk = endOffset >= totalItems;
+    const itemsInThisChunk = endOffset - startOffset;
+    
+    if (startOffset >= totalItems) {
+      sendUpdate('Chunk offset beyond total items - sync complete!', 'complete');
+      sendSSEData(reply, { 
+        complete: true, 
+        allChunksComplete: true,
+        totalProcessed: totalItems 
+      });
+      return;
+    }
+    
+    sendUpdate(`Processing chunk: items ${startOffset + 1} to ${endOffset} of ${totalItems} (${itemsInThisChunk} items)`);
+    
+    // 3. Get chunk of raindrops
+    const chunkRaindrops = allRaindrops.slice(startOffset, endOffset);
+    
+    // 4. Get Notion pages for comparison
+    let notionPages = [];
+    try {
+      sendUpdate('Fetching Notion pages...');
+      notionPages = await notionService.getNotionPages();
+    } catch (error) {
+      throw new Error(`Failed to fetch Notion pages: ${error.message}`);
+    }
+    
+    sendUpdate(`Found ${notionPages.length} Notion pages`);
+    
+    // 5. Build lookup maps
+    const { notionPagesByUrl, notionPagesByTitle } = buildLookupMaps(notionPages, chunkRaindrops);
+    
+    // 6. Process chunk items in small batches
+    const batchSize = 5; // Small batches within the chunk
+    const batches = chunkArray(chunkRaindrops, batchSize);
+    
+    sendUpdate(`Processing ${batches.length} batches within this chunk`);
+    
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      sendUpdate(`Processing batch ${i + 1} of ${batches.length} (${batch.length} items)`);
+      
+      for (const item of batch) {
+        try {
+          const result = await processSingleItem(item, notionPagesByUrl, notionPagesByTitle);
+          
+          if (result.action === 'added') {
+            sendUpdate(`Created: "${item.title}"`, 'added');
+            addedCount++;
+          } else if (result.action === 'updated') {
+            sendUpdate(`Updated: "${item.title}"`, 'updated');
+            updatedCount++;
+          } else if (result.action === 'skipped') {
+            sendUpdate(`Skipped: "${item.title}"`, 'skipped');
+            skippedCount++;
+          } else if (result.action === 'failed') {
+            sendUpdate(`Failed: "${item.title}" - ${result.error}`, 'failed');
+            failedCount++;
+          }
+          
+          // Short delay between items (300ms)
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+        } catch (itemError) {
+          console.error(`❌ [${chunkId}] Error processing item:`, itemError);
+          sendUpdate(`Failed: "${item.title}" - ${itemError.message}`, 'failed');
+          failedCount++;
+        }
+      }
+      
+      // Short delay between batches (500ms)
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    // 7. Chunk complete summary
+    const duration = Math.round((Date.now() - SYNC_START_TIME) / 1000);
+    sendUpdate(`Chunk completed in ${duration}s! Added: ${addedCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Failed: ${failedCount}`);
+    
+    // 8. Determine next steps
+    if (isLastChunk) {
+      sendUpdate(`🎉 All chunks completed! Total items processed: ${totalItems}`, 'complete');
+      sendSSEData(reply, { 
+        complete: true, 
+        allChunksComplete: true,
+        totalProcessed: totalItems,
+        finalCounts: { added: addedCount, updated: updatedCount, skipped: skippedCount, failed: failedCount }
+      });
+    } else {
+      const nextOffset = endOffset;
+      const remainingItems = totalItems - nextOffset;
+      
+      sendUpdate(`Chunk complete. ${remainingItems} items remaining. Next chunk starts at item ${nextOffset + 1}`, 'chunkComplete');
+      
+      sendSSEData(reply, {
+        chunkComplete: true,
+        nextOffset: nextOffset,
+        remainingItems: remainingItems,
+        totalItems: totalItems,
+        chunkCounts: { added: addedCount, updated: updatedCount, skipped: skippedCount, failed: failedCount }
+      });
+    }
+    
+  } catch (error) {
+    console.error(`❌ [${chunkId}] Chunk error:`, error);
+    throw error;
+  } finally {
+    // Release lock
+    GLOBAL_SYNC_LOCK = false;
+    SYNC_START_TIME = null;
+    SYNC_LOCK_ID = null;
+    console.log(`🔓 [${chunkId}] Lock released`);
+  }
+}
 
 // SSE route for streaming sync updates - SECURED WITH ANTI-RESTART PROTECTION
 app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
@@ -307,7 +527,7 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   });
 });
 
-// ULTRA-LOCKED VERSION of performSync
+// ULTRA-LOCKED VERSION of performSync (for the regular sync)
 async function performSyncUltraLocked(mode, limit) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
   console.log(`🔄 performSyncUltraLocked starting - Lock ID: ${lockId}, mode: ${mode}, limit: ${limit}`);
@@ -455,40 +675,31 @@ async function performSyncUltraLocked(mode, limit) {
             failedCount++;
           }
           
-          // SHORT DELAYS - be more conservative
-          const itemDelay = 300; // Just 300ms per item
-          await new Promise(resolve => setTimeout(resolve, itemDelay));
+          // Item delay (faster now)
+          await new Promise(resolve => setTimeout(resolve, 300));
           
         } catch (itemError) {
           console.error(`❌ [${lockId}] Error processing item "${item.title}":`, itemError);
           sendUpdate(`Failed: "${item.title}" - ${itemError.message}`, 'failed');
           failedCount++;
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 300));
         }
       }
       
-      // Enhanced memory cleanup and delays
-      if (processedBatches % 5 === 0) { // More frequent cleanup
-        sendUpdate(`Batch ${processedBatches} complete. Performing memory cleanup...`);
+      // Batch delay (faster now)
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Memory cleanup every 10 batches
+      if (processedBatches % 10 === 0) {
+        sendUpdate(`Checkpoint: ${processedBatches}/${totalBatches} batches completed.`);
+        console.log(`🔄 [${lockId}] CHECKPOINT: Processed ${processedBatches}/${totalBatches} batches`);
         
         if (global.gc) {
           global.gc();
           console.log(`🧹 [${lockId}] Forced garbage collection`);
         }
         
-        // Longer pause for memory recovery
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      } else {
-        // Standard delay between batches - be more conservative
-        const batchDelay = 500; // Just 500ms between batches
-        await new Promise(resolve => setTimeout(resolve, batchDelay));
-      }
-      
-      // More frequent checkpoints
-      if (processedBatches % 10 === 0) { // Every 10 batches instead of 25
-        sendUpdate(`Checkpoint: ${processedBatches}/${totalBatches} batches completed.`);
-        console.log(`🔄 [${lockId}] CHECKPOINT: Processed ${processedBatches}/${totalBatches} batches`);
-        await new Promise(resolve => setTimeout(resolve, 5000)); // 5s checkpoint pause
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
     
@@ -523,11 +734,9 @@ async function performSyncUltraLocked(mode, limit) {
               failedCount++;
             }
             
-            // Longer delay between deletions
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
           
-          // Delay between deletion batches
           await new Promise(resolve => setTimeout(resolve, 1500));
         }
       } else {
