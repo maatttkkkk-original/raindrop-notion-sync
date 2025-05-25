@@ -1,4 +1,4 @@
-// File: server.js
+// File: api/index.js
 'use strict';
 
 const path = require('path');
@@ -58,12 +58,12 @@ app.register(fastifyView, {
 app.register(fastifyStatic, {
   root: path.join(__dirname, '../public'),
   prefix: '/public/',
-  decorateReply: false // prevents conflicts with existing `reply.send`
+  decorateReply: false
 });
 
-// SYNC DEDUPLICATION STATE
-let currentSync = null; // Stores active sync process info
-const activeStreams = new Map(); // Stores all connected EventSource streams
+// SYNC STATE MANAGEMENT
+let currentSync = null;
+const activeStreams = new Map();
 
 // Helper function to send SSE data to all connected streams
 function broadcastSSEData(data) {
@@ -86,10 +86,9 @@ function sendSSEData(reply, data) {
   }
 }
 
-// Main dashboard route - SECURED WITH INSTANT LOADING
+// Main dashboard route
 app.get('/', { preHandler: requirePassword }, async (request, reply) => {
   try {
-    // Load page instantly with placeholder data
     return reply.view('index.hbs', {
       raindropTotal: '...',
       notionTotal: '...',
@@ -106,7 +105,7 @@ app.get('/', { preHandler: requirePassword }, async (request, reply) => {
   }
 });
 
-// NEW: API endpoint to get counts in background
+// API endpoint to get counts in background
 app.get('/api/counts', { preHandler: requirePassword }, async (request, reply) => {
   try {
     console.log('📊 Fetching counts for dashboard...');
@@ -130,7 +129,7 @@ app.get('/api/counts', { preHandler: requirePassword }, async (request, reply) =
   }
 });
 
-// Sync page route - SECURED (for incremental sync)
+// Sync page routes (both incremental and full use same efficient logic)
 app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
   const mode = request.query.mode || 'new';
   return reply.view('sync.hbs', { 
@@ -139,23 +138,21 @@ app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
   });
 });
 
-// ✅ NEW EFFICIENT ROUTE:
 app.get('/sync-all', { preHandler: requirePassword }, async (request, reply) => {
-  const mode = 'all'; // Always full sync for sync-all
-  return reply.view('sync.hbs', {  // Use the efficient template instead!
+  const mode = 'all';
+  return reply.view('sync-all.hbs', { 
     mode,
     password: request.query.password
   });
 });
 
-// CHUNKED SYNC API ROUTE - Used by /sync-all for full reconciliation
-app.get('/sync-chunked', { preHandler: requirePassword }, (request, reply) => {
+// SSE route for streaming sync updates
+app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   const mode = request.query.mode || 'new';
-  const chunkSize = parseInt(request.query.chunkSize || '100', 10);
-  const startOffset = parseInt(request.query.offset || '0', 10);
+  const limit = parseInt(request.query.limit || '0', 10);
   const streamId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
   
-  console.log(`🧩 CHUNKED SYNC REQUEST: mode=${mode}, chunkSize=${chunkSize}, offset=${startOffset}`);
+  console.log(`🔗 NEW SYNC REQUEST: ${streamId}, mode: ${mode}`);
   
   // Set headers for SSE
   reply.raw.writeHead(200, {
@@ -166,7 +163,7 @@ app.get('/sync-chunked', { preHandler: requirePassword }, (request, reply) => {
   
   // Add this stream to active streams
   activeStreams.set(streamId, reply);
-  console.log(`📡 Chunked client connected. Active streams: ${activeStreams.size}`);
+  console.log(`📡 Client connected. Active streams: ${activeStreams.size}`);
   
   // Keepalive interval
   const keepAliveInterval = setInterval(() => {
@@ -180,388 +177,113 @@ app.get('/sync-chunked', { preHandler: requirePassword }, (request, reply) => {
     } else {
       clearInterval(keepAliveInterval);
     }
-  }, 15000);
+  }, 30000);
   
-  // Check if another chunked sync is running
+  // Check if another sync is running
   if (GLOBAL_SYNC_LOCK) {
+    const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
+    console.log(`🚫 SYNC LOCK ACTIVE - Lock ID: ${SYNC_LOCK_ID}, Duration: ${lockDuration}s`);
+    
     sendSSEData(reply, {
-      message: `⏸️ Another sync chunk is running. Please wait...`,
+      message: `⏸️ Sync already running (${lockDuration}s elapsed). Please wait...`,
       type: 'waiting',
-      complete: true
+      lockInfo: { locked: true, lockId: SYNC_LOCK_ID, duration: lockDuration }
     });
     return;
   }
   
-  // Start chunked processing
-  performChunkedSync(mode, chunkSize, startOffset, streamId, reply)
-    .catch(error => {
-      console.error(`❌ Chunked sync error:`, error);
-      sendSSEData(reply, {
-        message: `Chunk failed: ${error.message}`,
-        type: 'failed',
-        complete: true
-      });
-    })
-    .finally(() => {
-      clearInterval(keepAliveInterval);
-      activeStreams.delete(streamId);
-    });
-  
-  // Handle client disconnect
-  request.raw.on('close', () => {
-    clearInterval(keepAliveInterval);
-    activeStreams.delete(streamId);
-    console.log(`📡 Chunked client ${streamId} disconnected`);
-  });
-});
-
-// CHUNKED SYNC PROCESSOR FUNCTION
-async function performChunkedSync(mode, chunkSize, startOffset, streamId, reply) {
-  const chunkId = `chunk_${streamId}_${startOffset}`;
-  console.log(`🧩 Starting chunk: ${chunkId}`);
-  
-  // Set lock for this chunk
-  GLOBAL_SYNC_LOCK = true;
-  SYNC_START_TIME = Date.now();
-  SYNC_LOCK_ID = chunkId;
-  
-  let addedCount = 0;
-  let updatedCount = 0;
-  let skippedCount = 0;
-  let failedCount = 0;
-  
-  try {
-    // Helper to send updates
-    const sendUpdate = (message, type = '') => {
-      console.log(`🧩 [${chunkId}] ${message}`);
-      sendSSEData(reply, {
-        message: `[${chunkId}] ${message}`,
-        type,
-        counts: { added: addedCount, updated: updatedCount, skipped: skippedCount },
-        chunkInfo: {
-          chunkId,
-          startOffset,
-          chunkSize
-        }
-      });
-    };
-    
-    // 1. Get ALL raindrops first (to know total count)
-    let allRaindrops = [];
-    try {
-      if (mode === 'new') {
-        sendUpdate('Fetching recent raindrops...');
-        allRaindrops = await raindropService.getRecentRaindrops();
-      } else {
-        sendUpdate('Fetching all raindrops...');
-        allRaindrops = await raindropService.getAllRaindrops();
-      }
-    } catch (error) {
-      throw new Error(`Failed to fetch raindrops: ${error.message}`);
-    }
-    
-    sendUpdate(`Found ${allRaindrops.length} total raindrops`);
-    
-    // 2. Calculate chunk boundaries
-    const totalItems = allRaindrops.length;
-    const endOffset = Math.min(startOffset + chunkSize, totalItems);
-    const isLastChunk = endOffset >= totalItems;
-    const itemsInThisChunk = endOffset - startOffset;
-    
-    if (startOffset >= totalItems) {
-      sendUpdate('Chunk offset beyond total items - sync complete!', 'complete');
-      sendSSEData(reply, { 
-        complete: true, 
-        allChunksComplete: true,
-        totalProcessed: totalItems 
-      });
-      return;
-    }
-    
-    sendUpdate(`Processing chunk: items ${startOffset + 1} to ${endOffset} of ${totalItems} (${itemsInThisChunk} items)`);
-    
-    // 3. Get chunk of raindrops
-    const chunkRaindrops = allRaindrops.slice(startOffset, endOffset);
-    
-    // 4. Get Notion pages for comparison
-    let notionPages = [];
-    try {
-      sendUpdate('Fetching Notion pages...');
-      notionPages = await notionService.getNotionPages();
-    } catch (error) {
-      throw new Error(`Failed to fetch Notion pages: ${error.message}`);
-    }
-    
-    sendUpdate(`Found ${notionPages.length} Notion pages`);
-    
-    // 5. Build lookup maps
-    const { notionPagesByUrl, notionPagesByTitle } = buildLookupMaps(notionPages, chunkRaindrops);
-    
-    // 6. Process chunk items in small batches
-    const batchSize = 5; // Small batches within the chunk
-    const batches = chunkArray(chunkRaindrops, batchSize);
-    
-    sendUpdate(`Processing ${batches.length} batches within this chunk`);
-    
-    for (let i = 0; i < batches.length; i++) {
-      const batch = batches[i];
-      sendUpdate(`Processing batch ${i + 1} of ${batches.length} (${batch.length} items)`);
-      
-      for (const item of batch) {
-        try {
-          const result = await processSingleItem(item, notionPagesByUrl, notionPagesByTitle);
-          
-          if (result.action === 'added') {
-            sendUpdate(`Created: "${item.title}"`, 'added');
-            addedCount++;
-          } else if (result.action === 'updated') {
-            sendUpdate(`Updated: "${item.title}"`, 'updated');
-            updatedCount++;
-          } else if (result.action === 'skipped') {
-            sendUpdate(`Skipped: "${item.title}"`, 'skipped');
-            skippedCount++;
-          } else if (result.action === 'failed') {
-            sendUpdate(`Failed: "${item.title}" - ${result.error}`, 'failed');
-            failedCount++;
-          }
-          
-          // Short delay between items (300ms)
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-        } catch (itemError) {
-          console.error(`❌ [${chunkId}] Error processing item:`, itemError);
-          sendUpdate(`Failed: "${item.title}" - ${itemError.message}`, 'failed');
-          failedCount++;
-        }
-      }
-      
-      // Short delay between batches (500ms)
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    
-    // 7. Chunk complete summary
-    const duration = Math.round((Date.now() - SYNC_START_TIME) / 1000);
-    sendUpdate(`Chunk completed in ${duration}s! Added: ${addedCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Failed: ${failedCount}`);
-    
-    // 8. Determine next steps
-    if (isLastChunk) {
-      sendUpdate(`🎉 All chunks completed! Total items processed: ${totalItems}`, 'complete');
-      sendSSEData(reply, { 
-        complete: true, 
-        allChunksComplete: true,
-        totalProcessed: totalItems,
-        finalCounts: { added: addedCount, updated: updatedCount, skipped: skippedCount, failed: failedCount }
-      });
-    } else {
-      const nextOffset = endOffset;
-      const remainingItems = totalItems - nextOffset;
-      
-      sendUpdate(`Chunk complete. ${remainingItems} items remaining. Next chunk starts at item ${nextOffset + 1}`, 'chunkComplete');
-      
-      sendSSEData(reply, {
-        chunkComplete: true,
-        nextOffset: nextOffset,
-        remainingItems: remainingItems,
-        totalItems: totalItems,
-        chunkCounts: { added: addedCount, updated: updatedCount, skipped: skippedCount, failed: failedCount }
-      });
-    }
-    
-  } catch (error) {
-    console.error(`❌ [${chunkId}] Chunk error:`, error);
-    throw error;
-  } finally {
-    // Release lock
-    GLOBAL_SYNC_LOCK = false;
-    SYNC_START_TIME = null;
-    SYNC_LOCK_ID = null;
-    console.log(`🔓 [${chunkId}] Lock released`);
-  }
-}
-
-// SSE route for streaming sync updates - SECURED (for incremental sync)
-app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
-  const mode = request.query.mode || 'new';
-  const isFullSync = mode === 'all';
-  const limit = parseInt(request.query.limit || '0', 10);
-  const streamId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-  
-  console.log(`🔗 NEW CLIENT REQUESTING SYNC: ${streamId}, mode: ${mode}`);
-  console.log(`🔒 GLOBAL_SYNC_LOCK: ${GLOBAL_SYNC_LOCK}`);
-  console.log(`📊 currentSync exists: ${!!currentSync}`);
-  if (currentSync) {
-    console.log(`📊 currentSync.isRunning: ${currentSync.isRunning}`);
-  }
-  
-  // Set headers for SSE
-  reply.raw.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
-  });
-  
-  // Add this stream to active streams
-  activeStreams.set(streamId, reply);
-  console.log(`📡 Client connected to sync stream. Active streams: ${activeStreams.size}`);
-  
-  // Set up keepalive interval to prevent timeout
-  const keepAliveInterval = setInterval(() => {
-    if (activeStreams.has(streamId)) {
-      try {
-        reply.raw.write(": keepalive\n\n");
-      } catch (error) {
-        clearInterval(keepAliveInterval);
-        console.error(`Keepalive error for stream ${streamId}:`, error.message);
-        activeStreams.delete(streamId);
-      }
-    } else {
-      clearInterval(keepAliveInterval);
-    }
-  }, 30000); // Send keepalive every 30 seconds
-  
-  // ULTRA-STRICT: Check multiple conditions to prevent ANY new sync starts
-  if (GLOBAL_SYNC_LOCK) {
-    const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
-    console.log(`🚫 GLOBAL SYNC LOCK ACTIVE - Lock ID: ${SYNC_LOCK_ID}, Duration: ${lockDuration}s`);
-    
-    sendSSEData(reply, {
-      message: `⏸️ Sync already running (${lockDuration}s elapsed). Lock ID: ${SYNC_LOCK_ID}. Please wait...`,
-      type: 'waiting',
-      lockInfo: {
-        locked: true,
-        lockId: SYNC_LOCK_ID,
-        duration: lockDuration
-      }
-    });
-    
-    return; // HARD EXIT - NO NEW SYNC ALLOWED
-  }
-  
   if (currentSync && currentSync.isRunning) {
     const syncDuration = Math.round((Date.now() - currentSync.startTime) / 1000);
-    console.log(`🚫 CURRENT SYNC RUNNING - Duration: ${syncDuration}s, Batch: ${currentSync.currentBatch}/${currentSync.totalBatches}`);
+    console.log(`🚫 CURRENT SYNC RUNNING - Duration: ${syncDuration}s`);
     
     sendSSEData(reply, {
-      message: `⏸️ Sync in progress (${syncDuration}s, batch ${currentSync.currentBatch}/${currentSync.totalBatches}). Please wait...`,
+      message: `⏸️ Sync in progress (${syncDuration}s). Please wait...`,
       counts: currentSync.counts || { added: 0, updated: 0, skipped: 0 },
-      progress: currentSync.progress || null,
       type: 'waiting'
     });
-    
-    return; // HARD EXIT - NO NEW SYNC ALLOWED
+    return;
   }
   
-  // ULTRA-LOCK: Set global lock BEFORE starting anything
+  // Set global lock
   GLOBAL_SYNC_LOCK = true;
   SYNC_START_TIME = Date.now();
   SYNC_LOCK_ID = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
   
-  console.log(`🔐 SETTING GLOBAL SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
-  console.log(`🚀 Starting new ${isFullSync ? 'full' : 'incremental'} sync...`);
+  console.log(`🔐 SETTING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
   
-  // Create new sync process with ultra-protection
+  // Create new sync process
   currentSync = {
     mode,
     limit,
-    isFullSync,
     isRunning: true,
     lockId: SYNC_LOCK_ID,
     startTime: Date.now(),
-    counts: { added: 0, updated: 0, skipped: 0 },
-    progress: null,
-    currentBatch: 0,
-    totalBatches: 0,
+    counts: { added: 0, updated: 0, skipped: 0, deleted: 0 },
     completed: false
   };
   
-  // Notify all connected clients
-  broadcastSSEData({
-    message: `🔒 Starting ${isFullSync ? 'full' : 'incremental'} sync (Lock ID: ${SYNC_LOCK_ID})...`,
-    counts: currentSync.counts,
-    progress: currentSync.progress,
-    lockInfo: {
-      locked: true,
-      lockId: SYNC_LOCK_ID,
-      duration: 0
-    }
-  });
-  
-  // Start sync process with ultra-protection
-  performSyncUltraLocked(mode, limit)
+  // Start sync process
+  performSmartDiffSync(mode, limit)
     .then(() => {
       console.log(`✅ Sync completed successfully - Lock ID: ${SYNC_LOCK_ID}`);
     })
     .catch(error => {
       console.error(`❌ SYNC ERROR - Lock ID: ${SYNC_LOCK_ID}:`, error);
-      app.log.error('Sync error:', error);
-      
-      // Notify all connected clients about the error
       broadcastSSEData({
-        message: `Sync failed (Lock ID: ${SYNC_LOCK_ID}): ${error.message}`,
+        message: `Sync failed: ${error.message}`,
         type: 'failed',
         complete: true
       });
     })
     .finally(() => {
-      // ULTRA-CRITICAL: Always release lock
-      console.log(`🔓 RELEASING GLOBAL SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
+      // Always release lock
+      console.log(`🔓 RELEASING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
       GLOBAL_SYNC_LOCK = false;
       SYNC_START_TIME = null;
+      SYNC_LOCK_ID = null;
       
       if (currentSync) {
         currentSync.isRunning = false;
         currentSync = null;
       }
-      
-      console.log(`🔓 Lock released. GLOBAL_SYNC_LOCK: ${GLOBAL_SYNC_LOCK}`);
     });
   
   // Handle client disconnect
   request.raw.on('close', () => {
     if (activeStreams.has(streamId)) {
-      console.log(`📡 Client disconnected from stream ${streamId}. Active streams: ${activeStreams.size - 1}`);
+      console.log(`📡 Client disconnected: ${streamId}`);
       activeStreams.delete(streamId);
     }
-    
     clearInterval(keepAliveInterval);
   });
 });
 
-// ULTRA-LOCKED VERSION of performSync (for incremental sync)
-async function performSyncUltraLocked(mode, limit) {
+// OPTIMIZED SMART DIFF SYNC FUNCTION
+async function performSmartDiffSync(mode, limit) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
-  console.log(`🔄 performSyncUltraLocked starting - Lock ID: ${lockId}, mode: ${mode}, limit: ${limit}`);
+  console.log(`🧠 Smart Diff Sync starting - Lock ID: ${lockId}, mode: ${mode}`);
   
-  // Double-check lock
   if (!GLOBAL_SYNC_LOCK) {
     throw new Error('Sync started without global lock - aborting');
   }
   
-  // Initialize counters
   let addedCount = 0;
   let updatedCount = 0;
   let skippedCount = 0;
   let deletedCount = 0;
   let failedCount = 0;
-  let processedBatches = 0;
-  let totalBatches = 0;
   
   try {
     const isFullSync = mode === 'all';
     
     // Helper to send progress updates
     const sendUpdate = (message, type = '') => {
-      console.log(`📊 [${lockId}] UPDATE: ${message}`);
+      console.log(`🧠 [${lockId}] ${message}`);
       
       const updateData = {
-        message: `[${lockId}] ${message}`,
+        message: `${message}`,
         type,
-        counts: { added: addedCount, updated: updatedCount, skipped: skippedCount },
-        progress: totalBatches > 0 ? {
-          current: processedBatches,
-          total: totalBatches,
-          percentage: Math.round((processedBatches / totalBatches) * 100)
-        } : null,
+        counts: { added: addedCount, updated: updatedCount, skipped: skippedCount, deleted: deletedCount },
         lockInfo: {
           locked: GLOBAL_SYNC_LOCK,
           lockId: lockId,
@@ -572,248 +294,241 @@ async function performSyncUltraLocked(mode, limit) {
       // Update current sync state
       if (currentSync) {
         currentSync.counts = updateData.counts;
-        currentSync.progress = updateData.progress;
-        currentSync.currentBatch = processedBatches;
-        currentSync.totalBatches = totalBatches;
       }
       
-      // Broadcast with lock protection
-      try {
-        broadcastSSEData(updateData);
-      } catch (sseError) {
-        console.error(`Error broadcasting SSE data for lock ${lockId}:`, sseError);
-      }
+      broadcastSSEData(updateData);
     };
     
-    // 1. Get raindrops
+    sendUpdate(`🧠 Starting Smart Diff Sync (${isFullSync ? 'full' : 'incremental'})`, 'info');
+    
+    // === STEP 1: FETCH ALL DATA (EFFICIENT) ===
+    sendUpdate('📡 Fetching raindrops...', 'fetching');
     let raindrops = [];
     try {
       if (mode === 'new') {
-        sendUpdate('Fetching recent raindrops from Raindrop.io...');
         raindrops = await raindropService.getRecentRaindrops();
       } else if (mode === 'dev') {
-        sendUpdate('Fetching a limited set of raindrops for testing...');
         raindrops = await raindropService.getAllRaindrops(limit || 5);
       } else {
-        sendUpdate('Fetching all raindrops from Raindrop.io...');
         raindrops = await raindropService.getAllRaindrops(limit);
       }
-    } catch (raindropError) {
-      console.error(`❌ [${lockId}] Error fetching raindrops:`, raindropError);
-      throw new Error(`Failed to fetch raindrops: ${raindropError.message}`);
+    } catch (error) {
+      throw new Error(`Failed to fetch raindrops: ${error.message}`);
     }
     
-    sendUpdate(`Found ${raindrops.length} raindrops to process`);
+    sendUpdate(`✅ Found ${raindrops.length} raindrops`, 'success');
     
     if (raindrops.length === 0) {
-      sendUpdate('No raindrops to process. Sync complete.', 'skipped');
+      sendUpdate('No raindrops to process. Sync complete.', 'complete');
       broadcastSSEData({ complete: true });
       return;
     }
     
-    // 2. Get Notion pages
+    sendUpdate('📡 Fetching Notion pages...', 'fetching');
     let notionPages = [];
     try {
-      sendUpdate('Fetching existing pages from Notion...');
       notionPages = await notionService.getNotionPages();
-    } catch (notionError) {
-      console.error(`❌ [${lockId}] Error fetching Notion pages:`, notionError);
-      throw new Error(`Failed to fetch Notion pages: ${notionError.message}`);
+    } catch (error) {
+      throw new Error(`Failed to fetch Notion pages: ${error.message}`);
     }
     
-    sendUpdate(`Found ${notionPages.length} Notion pages`);
+    sendUpdate(`✅ Found ${notionPages.length} Notion pages`, 'success');
     
-    // 3. Build lookup maps
+    // === STEP 2: BUILD LOOKUP MAPS ===
+    sendUpdate('🗺️ Building lookup maps...', 'processing');
     const { notionPagesByUrl, notionPagesByTitle, raindropUrlSet } = 
       buildLookupMaps(notionPages, raindrops);
     
-    // 4. Process in batches WITH LOCK CHECKS
-    const batchSize = raindrops.length > 100 ? 2 : 3;
-    const batches = chunkArray(raindrops, batchSize);
-    totalBatches = batches.length;
+    // === STEP 3: SMART DIFF ANALYSIS ===
+    sendUpdate('🔍 Performing Smart Diff analysis...', 'processing');
     
-    sendUpdate(`Processing ${batches.length} batches (${batchSize} items per batch)`);
-    console.log(`🔧 [${lockId}] BATCH PROCESSING: ${raindrops.length} items → ${batches.length} batches`);
+    const itemsToAdd = [];
+    const itemsToUpdate = [];
+    const itemsToSkip = [];
+    const pagesToDelete = [];
     
-    // Process each batch with LOCK VERIFICATION
-    for (let i = 0; i < batches.length; i++) {
-      // ULTRA-CHECK: Verify lock is still held
-      if (!GLOBAL_SYNC_LOCK) {
-        throw new Error(`Global lock lost during processing at batch ${i + 1}`);
-      }
+    // Analyze raindrops for changes
+    for (const item of raindrops) {
+      const normUrl = normalizeUrl(item.link);
+      const normTitle = normalizeTitle(item.title);
       
-      if (!currentSync || !currentSync.isRunning) {
-        throw new Error(`Sync state lost during processing at batch ${i + 1}`);
-      }
+      const existingPage = notionPagesByUrl.get(normUrl) || notionPagesByTitle.get(normTitle);
       
-      const batch = batches[i];
-      processedBatches = i + 1;
-      
-      sendUpdate(`Processing batch ${processedBatches} of ${totalBatches} (${batch.length} items)`);
-      console.log(`📦 [${lockId}] Processing batch ${processedBatches}/${totalBatches}`);
-      
-      // Process items in the batch
-      for (let j = 0; j < batch.length; j++) {
-        const item = batch[j];
+      if (existingPage) {
+        // Check if update needed
+        const currentTitle = existingPage.properties?.Name?.title?.[0]?.text?.content || '';
+        const currentUrl = existingPage.properties?.URL?.url || '';
         
-        try {
-          const result = await processSingleItem(item, notionPagesByUrl, notionPagesByTitle);
-          
-          if (result.action === 'added') {
-            sendUpdate(`Created: "${item.title}"`, 'added');
-            addedCount++;
-            notionPagesByUrl.set(normalizeUrl(item.link), { id: result.pageId });
-            notionPagesByTitle.set(normalizeTitle(item.title), { id: result.pageId });
-          } else if (result.action === 'updated') {
-            sendUpdate(`Updated: "${item.title}"`, 'updated');
-            updatedCount++;
-          } else if (result.action === 'skipped') {
-            sendUpdate(`Skipped: "${item.title}"`, 'skipped');
-            skippedCount++;
-          } else if (result.action === 'failed') {
-            sendUpdate(`Failed: "${item.title}" - ${result.error}`, 'failed');
-            failedCount++;
-          }
-          
-          // Item delay (faster now)
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-        } catch (itemError) {
-          console.error(`❌ [${lockId}] Error processing item "${item.title}":`, itemError);
-          sendUpdate(`Failed: "${item.title}" - ${itemError.message}`, 'failed');
-          failedCount++;
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
-      }
-      
-      // Batch delay (faster now)
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Memory cleanup every 10 batches
-      if (processedBatches % 10 === 0) {
-        sendUpdate(`Checkpoint: ${processedBatches}/${totalBatches} batches completed.`);
-        console.log(`🔄 [${lockId}] CHECKPOINT: Processed ${processedBatches}/${totalBatches} batches`);
-        
-        if (global.gc) {
-          global.gc();
-          console.log(`🧹 [${lockId}] Forced garbage collection`);
+        const currentTags = new Set();
+        if (existingPage.properties?.Tags?.multi_select) {
+          existingPage.properties.Tags.multi_select.forEach(tag => {
+            currentTags.add(tag.name);
+          });
         }
         
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        const needsUpdate = 
+          (normalizeTitle(currentTitle) !== normalizeTitle(item.title)) ||
+          (normalizeUrl(currentUrl) !== normUrl) ||
+          !tagsMatch(currentTags, item.tags || []);
+        
+        if (needsUpdate) {
+          itemsToUpdate.push({ item, existingPage });
+        } else {
+          itemsToSkip.push(item);
+        }
+      } else {
+        itemsToAdd.push(item);
       }
     }
     
-    sendUpdate(`Item processing complete. Processed ${processedBatches}/${totalBatches} batches.`);
-    
-    // Handle deletions for full sync
+    // Find pages to delete (full sync only)
     if (isFullSync) {
-      sendUpdate('Checking for pages to delete...');
-      
-      const deletions = [];
       for (const [url, page] of notionPagesByUrl.entries()) {
         if (!raindropUrlSet.has(url)) {
-          deletions.push({ pageId: page.id, url });
+          pagesToDelete.push(page);
         }
       }
+    }
+    
+    const totalOperations = itemsToAdd.length + itemsToUpdate.length + pagesToDelete.length;
+    skippedCount = itemsToSkip.length;
+    
+    sendUpdate(`🔍 Smart Diff complete: ${itemsToAdd.length} to add, ${itemsToUpdate.length} to update, ${itemsToSkip.length} to skip, ${pagesToDelete.length} to delete`, 'analysis');
+    
+    if (totalOperations === 0) {
+      sendUpdate('🎉 Everything already in sync! No changes needed.', 'complete');
+      broadcastSSEData({ complete: true, counts: { added: 0, updated: 0, skipped: skippedCount, deleted: 0 } });
+      return;
+    }
+    
+    const efficiency = Math.round((totalOperations / raindrops.length) * 100);
+    sendUpdate(`🚀 Processing ${totalOperations} operations (${efficiency}% efficiency vs 100% in old system)`, 'info');
+    
+    // === STEP 4: PROCESS ONLY THE DIFFERENCES ===
+    
+    // Process additions
+    if (itemsToAdd.length > 0) {
+      sendUpdate(`➕ Creating ${itemsToAdd.length} new pages...`, 'processing');
       
-      if (deletions.length > 0) {
-        sendUpdate(`Found ${deletions.length} pages to delete`);
+      const addBatches = chunkArray(itemsToAdd, 3);
+      for (let i = 0; i < addBatches.length; i++) {
+        const batch = addBatches[i];
         
-        const deletionBatches = chunkArray(deletions, 3);
-        for (let i = 0; i < deletionBatches.length; i++) {
-          const batch = deletionBatches[i];
-          sendUpdate(`Processing deletion batch ${i + 1} of ${deletionBatches.length}`);
-          
-          for (const { pageId, url } of batch) {
-            try {
-              sendUpdate(`Deleting page: ${url}`, 'deleted');
-              await notionService.deleteNotionPage(pageId);
-              deletedCount++;
-            } catch (error) {
-              sendUpdate(`Failed to delete: ${url} - ${error.message}`, 'failed');
+        for (const item of batch) {
+          try {
+            const result = await notionService.createNotionPage(item);
+            if (result.success) {
+              sendUpdate(`✅ Created: "${item.title}"`, 'added');
+              addedCount++;
+              // Update lookup maps for subsequent operations
+              notionPagesByUrl.set(normalizeUrl(item.link), { id: result.pageId });
+              notionPagesByTitle.set(normalizeTitle(item.title), { id: result.pageId });
+            } else {
+              sendUpdate(`❌ Failed to create: "${item.title}"`, 'failed');
               failedCount++;
             }
             
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+          } catch (error) {
+            sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
+            failedCount++;
+            await new Promise(resolve => setTimeout(resolve, 300));
           }
-          
-          await new Promise(resolve => setTimeout(resolve, 1500));
         }
-      } else {
-        sendUpdate('No pages to delete');
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
+    // Process updates
+    if (itemsToUpdate.length > 0) {
+      sendUpdate(`🔄 Updating ${itemsToUpdate.length} existing pages...`, 'processing');
+      
+      const updateBatches = chunkArray(itemsToUpdate, 3);
+      for (let i = 0; i < updateBatches.length; i++) {
+        const batch = updateBatches[i];
+        
+        for (const { item, existingPage } of batch) {
+          try {
+            const success = await notionService.updateNotionPage(existingPage.id, item);
+            if (success) {
+              sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
+              updatedCount++;
+            } else {
+              sendUpdate(`❌ Failed to update: "${item.title}"`, 'failed');
+              failedCount++;
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+          } catch (error) {
+            sendUpdate(`❌ Error updating "${item.title}": ${error.message}`, 'failed');
+            failedCount++;
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
+    // Process deletions
+    if (pagesToDelete.length > 0) {
+      sendUpdate(`🗑️ Deleting ${pagesToDelete.length} obsolete pages...`, 'processing');
+      
+      const deleteBatches = chunkArray(pagesToDelete, 2);
+      for (let i = 0; i < deleteBatches.length; i++) {
+        const batch = deleteBatches[i];
+        
+        for (const page of batch) {
+          try {
+            const url = page.properties?.URL?.url || 'Unknown URL';
+            await notionService.deleteNotionPage(page.id);
+            sendUpdate(`🗑️ Deleted: ${url}`, 'deleted');
+            deletedCount++;
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+          } catch (error) {
+            sendUpdate(`❌ Error deleting page: ${error.message}`, 'failed');
+            failedCount++;
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 750));
       }
     }
     
     // Final summary
     const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
-    sendUpdate(`Sync completed in ${duration}s! Added: ${addedCount}, Updated: ${updatedCount}, Skipped: ${skippedCount}, Deleted: ${deletedCount}, Failed: ${failedCount}`);
+    const finalEfficiency = Math.round((totalOperations / raindrops.length) * 100);
     
-    console.log(`✅ [${lockId}] SYNC COMPLETE: ${duration}s total, ${processedBatches}/${totalBatches} batches`);
+    sendUpdate(`🎉 Smart Diff Sync completed in ${duration}s!`, 'complete');
+    sendUpdate(`📊 Efficiency: ${totalOperations}/${raindrops.length} items processed (${finalEfficiency}% vs 100% in old system)`, 'info');
+    sendUpdate(`📈 Results: ${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped, ${deletedCount} deleted, ${failedCount} failed`, 'summary');
     
-    // Mark as completed
+    console.log(`✅ [${lockId}] SMART DIFF COMPLETE: ${duration}s, ${finalEfficiency}% efficiency`);
+    
     if (currentSync) {
       currentSync.completed = true;
       currentSync.isRunning = false;
     }
     
-    broadcastSSEData({ complete: true });
+    broadcastSSEData({ 
+      complete: true,
+      finalCounts: { added: addedCount, updated: updatedCount, skipped: skippedCount, deleted: deletedCount, failed: failedCount },
+      efficiency: { itemsProcessed: totalOperations, totalItems: raindrops.length, percentage: finalEfficiency, duration }
+    });
     
   } catch (error) {
-    console.error(`❌ [${lockId}] SYNC ERROR:`, error);
-    
+    console.error(`❌ [${lockId}] SMART DIFF ERROR:`, error);
     broadcastSSEData({
-      message: `Error in sync ${lockId} after ${processedBatches}/${totalBatches} batches: ${error.message}`,
+      message: `Smart Diff Sync failed: ${error.message}`,
       type: 'failed',
       complete: true
     });
-    
     throw error;
-  }
-}
-
-// Process a single raindrop item
-async function processSingleItem(item, notionPagesByUrl, notionPagesByTitle) {
-  try {
-    const normUrl = normalizeUrl(item.link);
-    const normTitle = normalizeTitle(item.title);
-    
-    // Check if already exists in Notion
-    const existingPage = notionPagesByUrl.get(normUrl) || notionPagesByTitle.get(normTitle);
-    
-    if (existingPage) {
-      // Check if it needs an update
-      const currentTitle = existingPage.properties?.Name?.title?.[0]?.text?.content || '';
-      const currentUrl = existingPage.properties?.URL?.url || '';
-      
-      // Get current tags
-      const currentTags = new Set();
-      if (existingPage.properties?.Tags?.multi_select) {
-        existingPage.properties.Tags.multi_select.forEach(tag => {
-          currentTags.add(tag.name);
-        });
-      }
-      
-      // Check if update needed
-      const needsUpdate = 
-        (normalizeTitle(currentTitle) !== normalizeTitle(item.title)) ||
-        (normalizeUrl(currentUrl) !== normUrl) ||
-        !tagsMatch(currentTags, item.tags || []);
-      
-      if (needsUpdate) {
-        const success = await notionService.updateNotionPage(existingPage.id, item);
-        return success ? { action: 'updated' } : { action: 'failed', error: 'Failed to update' };
-      } else {
-        return { action: 'skipped' };
-      }
-    } else {
-      // Create new page
-      const result = await notionService.createNotionPage(item);
-      return result.success ? 
-        { action: 'added', pageId: result.pageId } : 
-        { action: 'failed', error: result.error };
-    }
-  } catch (error) {
-    return { action: 'failed', error: error.message };
   }
 }
 
@@ -886,12 +601,11 @@ function chunkArray(arr, size) {
   return result;
 }
 
-// Add a ping route to keep connections alive - UNSECURED (for monitoring)
+// Utility routes
 app.get('/ping', async (request, reply) => {
   return { status: 'ok' };
 });
 
-// Diagnostic route to check API connections - SECURED
 app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) => {
   const diagnostics = {
     timestamp: new Date().toISOString(),
@@ -901,10 +615,7 @@ app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) =
         started: new Date(currentSync.startTime).toISOString(),
         completed: currentSync.completed,
         isRunning: currentSync.isRunning,
-        currentBatch: currentSync.currentBatch,
-        totalBatches: currentSync.totalBatches,
-        counts: currentSync.counts,
-        progress: currentSync.progress
+        counts: currentSync.counts
       } : null,
       active_streams: activeStreams.size,
       global_sync_lock: GLOBAL_SYNC_LOCK,
@@ -919,7 +630,7 @@ app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) =
     api_tests: {}
   };
 
-  // Test Raindrop API connection
+  // Test API connections
   try {
     const raindropTotal = await raindropService.getRaindropTotal();
     diagnostics.api_tests.raindrop = {
@@ -935,7 +646,6 @@ app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) =
     };
   }
 
-  // Test Notion API connection
   try {
     const notionTotal = await notionService.getTotalNotionPages();
     diagnostics.api_tests.notion = {
@@ -956,7 +666,6 @@ app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) =
     .send(JSON.stringify(diagnostics, null, 2));
 });
 
-// Sync Debug Route - SECURED
 app.get('/sync-debug', { preHandler: requirePassword }, async (request, reply) => {
   const debug = {
     timestamp: new Date().toISOString(),
@@ -969,8 +678,6 @@ app.get('/sync-debug', { preHandler: requirePassword }, async (request, reply) =
       completed: currentSync.completed,
       lockId: currentSync.lockId,
       startTime: new Date(currentSync.startTime).toISOString(),
-      currentBatch: currentSync.currentBatch,
-      totalBatches: currentSync.totalBatches,
       counts: currentSync.counts
     } : null,
     activeStreams: {
@@ -980,14 +687,13 @@ app.get('/sync-debug', { preHandler: requirePassword }, async (request, reply) =
     suggestions: []
   };
   
-  // Add suggestions based on current state
   if (GLOBAL_SYNC_LOCK) {
     const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
     debug.suggestions.push(`Sync locked for ${lockDuration}s - this is normal during active sync`);
   }
   
   if (activeStreams.size > 1) {
-    debug.suggestions.push(`⚠️ Multiple streams (${activeStreams.size}) detected - this might cause restart issues`);
+    debug.suggestions.push(`⚠️ Multiple streams (${activeStreams.size}) detected`);
   }
   
   if (!GLOBAL_SYNC_LOCK && !currentSync) {
@@ -999,7 +705,6 @@ app.get('/sync-debug', { preHandler: requirePassword }, async (request, reply) =
     .send(JSON.stringify(debug, null, 2));
 });
 
-// Test Sync Lock Route - SECURED
 app.get('/test-sync-lock', { preHandler: requirePassword }, async (request, reply) => {
   const action = request.query.action;
   
