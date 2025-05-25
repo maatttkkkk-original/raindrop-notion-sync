@@ -2,33 +2,289 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Chunked Sync</title>
+  <title>Chunked Sync Setup</title>
   <link rel="stylesheet" href="/public/style.css">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 </head>
 <body>
   <div class="container">
-    <h1>Chunked Sync ({{mode}})</h1>
-    <p>Processing large datasets in 100-item chunks to avoid timeouts.</p>
+    <div class="toggle-container">
+      <div id="status-indicator" class="toggle-indicator not-synced"></div>
+    </div>
     
-    <div id="sync-controls">
+    <h1 class="sync-title">Chunked Sync Setup</h1>
+    
+    <div class="sync-description">
+      <p>Processing large datasets in 100-item chunks to avoid timeouts.</p>
+      <p>This will process all 1,366 items in approximately 10-12 minutes.</p>
+    </div>
+    
+    <div id="sync-controls" class="actions-container">
       <button id="start-chunked-sync" class="sync-new">Start Chunked Sync</button>
       <a href="/?password={{password}}" class="back-button">Back ↤</a>
     </div>
     
-    <div id="sync-progress" style="display: none;">
+    <div id="sync-progress" class="sync-progress" style="display: none;">
       <div class="sync-stats">
         <span id="added-count">0</span> added, 
         <span id="updated-count">0</span> updated, 
         <span id="skipped-count">0</span> skipped
       </div>
       
-      <div class="live-updates" id="updates"></div>
+      <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <strong style="color: #495057;">Progress:</strong>
+          <span id="chunk-progress" style="font-weight: bold; color: #007bff;">0%</span>
+        </div>
+        <div style="margin-bottom: 8px;">
+          <strong style="color: #495057;">Current Chunk:</strong>
+          <span id="current-chunk" style="color: #6c757d;">None</span>
+        </div>
+        <div style="width: 100%; background-color: #e9ecef; border-radius: 4px; height: 8px; overflow: hidden;">
+          <div id="progress-bar" style="width: 0%; height: 100%; background-color: #007bff; transition: width 0.3s ease;"></div>
+        </div>
+      </div>
+      
+      <div class="live-updates" id="updates">
+        <div class="sync-item">Ready to start chunked sync...</div>
+      </div>
+      
+      <div class="actions-container">
+        <button id="cancel-sync-btn" class="back-button" style="background: #e74c3c;">Cancel Sync</button>
+      </div>
     </div>
   </div>
 
   <script>
-    // Chunked sync JavaScript logic here
+    const mode = '{{mode}}';
+    const password = '{{password}}';
+    
+    let totalAdded = 0, totalUpdated = 0, totalSkipped = 0;
+    let totalItems = 0, processedItems = 0;
+    let currentOffset = 0;
+    let isProcessing = false;
+    let currentEventSource = null;
+    
+    // Elements
+    const startBtn = document.getElementById('start-chunked-sync');
+    const cancelBtn = document.getElementById('cancel-sync-btn');
+    const syncControls = document.getElementById('sync-controls');
+    const syncProgress = document.getElementById('sync-progress');
+    const statusIndicator = document.getElementById('status-indicator');
+    const progressBar = document.getElementById('progress-bar');
+    
+    function updateCounts(added, updated, skipped) {
+      totalAdded += added || 0;
+      totalUpdated += updated || 0;
+      totalSkipped += skipped || 0;
+      
+      document.getElementById('added-count').textContent = totalAdded;
+      document.getElementById('updated-count').textContent = totalUpdated;
+      document.getElementById('skipped-count').textContent = totalSkipped;
+    }
+    
+    function addMessage(message, type = '') {
+      const updatesDiv = document.getElementById('updates');
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `sync-item ${type}`;
+      messageDiv.textContent = message;
+      updatesDiv.appendChild(messageDiv);
+      
+      // Keep only last 20 messages to prevent memory issues
+      while (updatesDiv.children.length > 20) {
+        updatesDiv.removeChild(updatesDiv.firstChild);
+      }
+      
+      // Auto-scroll to bottom
+      updatesDiv.scrollTop = updatesDiv.scrollHeight;
+    }
+    
+    function updateProgress() {
+      if (totalItems > 0) {
+        const percentage = Math.round((processedItems / totalItems) * 100);
+        document.getElementById('chunk-progress').textContent = `${percentage}% (${processedItems}/${totalItems})`;
+        
+        // Update progress bar
+        progressBar.style.width = `${percentage}%`;
+        
+        // Update status indicator color based on progress
+        if (percentage === 100) {
+          statusIndicator.className = 'toggle-indicator synced';
+        } else if (percentage > 0) {
+          statusIndicator.className = 'toggle-indicator syncing';
+        }
+      }
+    }
+    
+    async function processNextChunk() {
+      if (isProcessing) return;
+      isProcessing = true;
+      
+      const chunkUrl = `/sync-chunked?password=${encodeURIComponent(password)}&mode=${mode}&offset=${currentOffset}&chunkSize=100`;
+      console.log('Starting chunk:', chunkUrl);
+      
+      const chunkNumber = Math.floor(currentOffset / 100) + 1;
+      const endItem = Math.min(currentOffset + 100, totalItems);
+      document.getElementById('current-chunk').textContent = `Chunk ${chunkNumber} (items ${currentOffset + 1}-${endItem})`;
+      
+      try {
+        currentEventSource = new EventSource(chunkUrl);
+        
+        currentEventSource.onmessage = function(event) {
+          try {
+            const data = JSON.parse(event.data);
+            
+            if (data.message) {
+              // Clean up the message by removing chunk IDs for better readability
+              let cleanMessage = data.message.replace(/\[chunk_\w+_\d+\]\s*/, '');
+              addMessage(cleanMessage, data.type || '');
+            }
+            
+            if (data.chunkComplete) {
+              currentEventSource.close();
+              currentEventSource = null;
+              
+              // Update totals
+              if (data.totalItems && !totalItems) {
+                totalItems = data.totalItems;
+              }
+              if (data.nextOffset) {
+                processedItems = data.nextOffset;
+              }
+              
+              updateProgress();
+              updateCounts(data.chunkCounts.added, data.chunkCounts.updated, data.chunkCounts.skipped);
+              
+              const remainingChunks = Math.ceil(data.remainingItems / 100);
+              addMessage(`✅ Chunk ${chunkNumber} completed! ${remainingChunks} chunks remaining.`, 'success');
+              
+              // Continue with next chunk
+              currentOffset = data.nextOffset;
+              isProcessing = false;
+              
+              setTimeout(() => {
+                processNextChunk();
+              }, 2000); // 2 second delay between chunks
+              
+            } else if (data.allChunksComplete || data.complete) {
+              currentEventSource.close();
+              currentEventSource = null;
+              isProcessing = false;
+              
+              if (data.totalProcessed) {
+                totalItems = data.totalProcessed;
+                processedItems = data.totalProcessed;
+              }
+              
+              updateProgress();
+              addMessage('🎉 All chunks completed successfully! Your sync is now complete.', 'success');
+              
+              // Update UI to show completion
+              statusIndicator.className = 'toggle-indicator synced';
+              cancelBtn.textContent = 'Return to Dashboard';
+              cancelBtn.style.background = '#27ae60';
+              cancelBtn.onclick = () => window.location.href = `/?password=${password}`;
+              
+              // Show completion message
+              setTimeout(() => {
+                alert(`Sync completed successfully!\n\nProcessed: ${totalItems} items\nAdded: ${totalAdded}\nUpdated: ${totalUpdated}\nSkipped: ${totalSkipped}`);
+              }, 1000);
+            }
+            
+          } catch (error) {
+            console.error('Error processing message:', error);
+            addMessage('Error processing sync message', 'failed');
+          }
+        };
+        
+        currentEventSource.onerror = function(error) {
+          console.error('EventSource error:', error);
+          
+          if (currentEventSource && currentEventSource.readyState === EventSource.CLOSED) {
+            addMessage('Connection lost. Retrying in 5 seconds...', 'failed');
+            isProcessing = false;
+            
+            setTimeout(() => {
+              if (!isProcessing && currentOffset < totalItems) {
+                addMessage('Retrying chunk...', 'info');
+                processNextChunk();
+              }
+            }, 5000);
+          }
+        };
+        
+      } catch (error) {
+        console.error('Error starting chunk:', error);
+        isProcessing = false;
+        addMessage(`Error: ${error.message}`, 'failed');
+      }
+    }
+    
+    function startChunkedSync() {
+      if (isProcessing) return;
+      
+      // Update UI
+      syncControls.style.display = 'none';
+      syncProgress.style.display = 'block';
+      statusIndicator.className = 'toggle-indicator syncing';
+      
+      // Reset counters
+      totalAdded = totalUpdated = totalSkipped = 0;
+      totalItems = 0;
+      processedItems = 0;
+      currentOffset = 0;
+      
+      // Clear previous messages
+      document.getElementById('updates').innerHTML = '<div class="sync-item">Starting chunked sync...</div>';
+      document.getElementById('chunk-progress').textContent = '0%';
+      document.getElementById('current-chunk').textContent = 'Initializing...';
+      progressBar.style.width = '0%';
+      
+      addMessage('🚀 Starting chunked sync process...', 'info');
+      addMessage('This will process your items in chunks of 100 to avoid timeouts.', 'info');
+      
+      processNextChunk();
+    }
+    
+    function cancelSync() {
+      if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+      }
+      
+      isProcessing = false;
+      
+      // Return to dashboard
+      window.location.href = `/?password=${password}`;
+    }
+    
+    // Event listeners
+    startBtn.addEventListener('click', startChunkedSync);
+    cancelBtn.addEventListener('click', cancelSync);
+    
+    // Add touchstart event listeners for mobile devices
+    document.querySelectorAll('a, button').forEach(element => {
+      element.addEventListener('touchstart', function() {
+        this.classList.add('touched');
+      });
+      element.addEventListener('touchend', function() {
+        this.classList.remove('touched');
+      });
+    });
+    
+    // Prevent accidental navigation during sync
+    window.addEventListener('beforeunload', function(e) {
+      if (isProcessing) {
+        e.preventDefault();
+        e.returnValue = 'Chunked sync is in progress. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    });
+    
+    // Add some helpful info on page load
+    console.log('Chunked Sync Page Loaded');
+    console.log(`Mode: ${mode}`);
+    console.log('This page will process large datasets in 100-item chunks to avoid timeouts.');
   </script>
 </body>
 </html>
