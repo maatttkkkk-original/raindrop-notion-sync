@@ -435,8 +435,8 @@ async function performSyncUltraLocked(mode, limit) {
             failedCount++;
           }
           
-          // LONGER DELAYS - be more conservative
-          const itemDelay = raindrops.length > 500 ? 2000 : 1500; // 2s for large, 1.5s for moderate
+          // SHORT DELAYS - be more conservative
+          const itemDelay = 300; // Just 300ms per item
           await new Promise(resolve => setTimeout(resolve, itemDelay));
           
         } catch (itemError) {
@@ -460,7 +460,7 @@ async function performSyncUltraLocked(mode, limit) {
         await new Promise(resolve => setTimeout(resolve, 3000));
       } else {
         // Standard delay between batches - be more conservative
-        const batchDelay = raindrops.length > 500 ? 3000 : 2000; // 3s for large, 2s for moderate
+        const batchDelay = 500; // Just 500ms between batches
         await new Promise(resolve => setTimeout(resolve, batchDelay));
       }
       
