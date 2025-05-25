@@ -1,103 +1,325 @@
-// File: api/index.js
-'use strict';
-
+const fastify = require('fastify')({ logger: true });
 const path = require('path');
-const Fastify = require('fastify');
-const fastifyView = require('@fastify/view');
-const fastifyStatic = require('@fastify/static');
-const handlebars = require('handlebars');
-const dotenv = require('dotenv');
-const fetch = require('node-fetch');
+const { getRaindrops } = require('./services/raindrop');
+const { getNotionPages, createNotionPage, updateNotionPage, deleteNotionPage } = require('./services/notion');
 
-// Load environment variables
-dotenv.config();
-
-// Initialize Fastify server
-const app = Fastify({ 
-  logger: true
-});
-
-// Import service modules
-const raindropService = require('../services/raindrop');
-const notionService = require('../services/notion');
-
-// Password Protection Configuration
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'sync2025';
-
-// GLOBAL SYNC LOCK VARIABLES
-let GLOBAL_SYNC_LOCK = false;
-let SYNC_START_TIME = null;
-let SYNC_LOCK_ID = null;
-
-// Middleware to check password
-function requirePassword(request, reply, done) {
-  const password = request.query.password || request.headers.authorization?.replace('Bearer ', '');
-  
-  console.log(`Access attempt with password: ${password ? 'provided' : 'missing'}`);
-  
-  if (password !== ADMIN_PASSWORD) {
-    console.log(`Access denied - incorrect password`);
-    return reply.code(401).send({ 
-      error: 'Unauthorized',
-      message: 'Access denied. Please provide the correct password as a URL parameter: ?password=yourpassword'
-    });
-  }
-  
-  console.log(`Access granted with correct password`);
-  done();
-}
-
-// Register template engine
-app.register(fastifyView, {
-  engine: { handlebars },
-  root: path.join(__dirname, '../src/pages'),
+// Register view engine for Handlebars
+fastify.register(require('@fastify/view'), {
+  engine: {
+    handlebars: require('handlebars')
+  },
+  root: path.join(__dirname, '..', 'src', 'pages'),
   layout: false
 });
 
-// Serve static files
-app.register(fastifyStatic, {
-  root: path.join(__dirname, '../public'),
-  prefix: '/public/',
-  decorateReply: false
+// Register static files
+fastify.register(require('@fastify/static'), {
+  root: path.join(__dirname, '..', 'public'),
+  prefix: '/public/'
 });
 
-// SYNC STATE MANAGEMENT
+// Password middleware
+const requirePassword = async (request, reply) => {
+  const password = request.query.password;
+  if (!password || password !== process.env.APP_PASSWORD) {
+    reply.code(401).send('Unauthorized');
+  }
+};
+
+// Global sync state management
+let GLOBAL_SYNC_LOCK = false;
+let SYNC_START_TIME = null;
+let SYNC_LOCK_ID = null;
 let currentSync = null;
-const activeStreams = new Map();
 
-// Helper function to send SSE data to all connected streams
-function broadcastSSEData(data) {
-  for (const [streamId, reply] of activeStreams.entries()) {
-    try {
-      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
-    } catch (error) {
-      console.error(`Error sending to stream ${streamId}:`, error.message);
-      activeStreams.delete(streamId);
-    }
-  }
-}
-
-// Helper function to send SSE data to a specific stream
+// Helper function to send SSE data
 function sendSSEData(reply, data) {
+  reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+// Smart Diff Sync Function
+async function performSmartDiffSync(mode = 'all', reply) {
+  const syncId = `sync_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  
   try {
-    reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    sendSSEData(reply, { 
+      message: `🔒 Starting Smart Diff sync (${mode})`, 
+      type: 'info',
+      syncId: syncId
+    });
+
+    // Step 1: Fetch all data once (efficient!)
+    sendSSEData(reply, { message: '📡 Fetching raindrops...', type: 'info' });
+    const raindrops = await getRaindrops();
+    const totalRaindrops = raindrops.length;
+    
+    sendSSEData(reply, { 
+      message: `✅ Found ${totalRaindrops} raindrops`, 
+      type: 'success',
+      progress: 25
+    });
+
+    sendSSEData(reply, { message: '📄 Fetching Notion pages...', type: 'info' });
+    const notionPages = await getNotionPages();
+    const totalNotion = notionPages.length;
+    
+    sendSSEData(reply, { 
+      message: `✅ Found ${totalNotion} Notion pages`, 
+      type: 'success',
+      progress: 50
+    });
+
+    // Step 2: Build lookup maps for O(1) comparison
+    sendSSEData(reply, { message: '🗺️ Building lookup maps...', type: 'info' });
+    
+    const notionLookupByUrl = new Map();
+    const notionLookupByTitle = new Map();
+    
+    notionPages.forEach(page => {
+      const url = page.properties?.URL?.url;
+      const title = page.properties?.Name?.title?.[0]?.text?.content;
+      
+      if (url) notionLookupByUrl.set(url, page);
+      if (title) notionLookupByTitle.set(title, page);
+    });
+
+    sendSSEData(reply, { 
+      message: '✅ Lookup maps created', 
+      type: 'success',
+      progress: 60
+    });
+
+    // Step 3: Smart Diff Analysis - Pre-identify all differences
+    sendSSEData(reply, { message: '🔍 Performing Smart Diff analysis...', type: 'info' });
+    
+    const toAdd = [];
+    const toUpdate = [];
+    const toSkip = [];
+    let processed = 0;
+
+    // Analyze each raindrop
+    for (const raindrop of raindrops) {
+      processed++;
+      
+      // Filter based on mode
+      if (mode === 'new') {
+        const createdDate = new Date(raindrop.created);
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        if (createdDate < thirtyDaysAgo) {
+          toSkip.push(raindrop);
+          continue;
+        }
+      }
+
+      const existingPageByUrl = notionLookupByUrl.get(raindrop.link);
+      const existingPageByTitle = notionLookupByTitle.get(raindrop.title);
+      const existingPage = existingPageByUrl || existingPageByTitle;
+
+      if (!existingPage) {
+        // New item to add
+        toAdd.push(raindrop);
+      } else {
+        // Check if update needed
+        const notionTitle = existingPage.properties?.Name?.title?.[0]?.text?.content || '';
+        const notionUrl = existingPage.properties?.URL?.url || '';
+        const notionTags = existingPage.properties?.Tags?.multi_select?.map(tag => tag.name) || [];
+        const raindropTags = raindrop.tags || [];
+
+        const needsUpdate = 
+          notionTitle !== raindrop.title ||
+          notionUrl !== raindrop.link ||
+          JSON.stringify(notionTags.sort()) !== JSON.stringify(raindropTags.sort());
+
+        if (needsUpdate) {
+          toUpdate.push({ raindrop, existingPage });
+        } else {
+          toSkip.push(raindrop);
+        }
+      }
+
+      // Progress update every 100 items
+      if (processed % 100 === 0) {
+        const progress = 60 + (processed / totalRaindrops) * 20;
+        sendSSEData(reply, { 
+          message: `🔍 Analyzed ${processed}/${totalRaindrops} items...`, 
+          type: 'info',
+          progress: Math.round(progress)
+        });
+      }
+    }
+
+    // Handle deletions for full sync
+    const toDelete = [];
+    if (mode === 'all') {
+      const raindropUrls = new Set(raindrops.map(r => r.link));
+      const raindropTitles = new Set(raindrops.map(r => r.title));
+      
+      for (const page of notionPages) {
+        const url = page.properties?.URL?.url;
+        const title = page.properties?.Name?.title?.[0]?.text?.content;
+        
+        if (url && !raindropUrls.has(url) && title && !raindropTitles.has(title)) {
+          toDelete.push(page);
+        }
+      }
+    }
+
+    const totalOperations = toAdd.length + toUpdate.length + toDelete.length;
+    const efficiencyPercentage = totalOperations > 0 ? 
+      Math.round(((totalRaindrops - totalOperations) / totalRaindrops) * 100) : 100;
+
+    sendSSEData(reply, { 
+      message: `🔍 Smart Diff complete: ${toAdd.length} to add, ${toUpdate.length} to update, ${toSkip.length} to skip, ${toDelete.length} to delete`, 
+      type: 'success',
+      progress: 80
+    });
+
+    sendSSEData(reply, { 
+      message: `🚀 Processing ${totalOperations} operations (${efficiencyPercentage}% efficiency vs 100% in old system)`, 
+      type: 'info'
+    });
+
+    // Step 4: Process only the differences (not all items!)
+    let completedOperations = 0;
+
+    // Add new items
+    if (toAdd.length > 0) {
+      sendSSEData(reply, { message: `➕ Adding ${toAdd.length} new pages...`, type: 'info' });
+      
+      for (const raindrop of toAdd) {
+        try {
+          await createNotionPage({
+            name: raindrop.title,
+            url: raindrop.link,
+            tags: raindrop.tags || [],
+            created: raindrop.created,
+            excerpt: raindrop.excerpt || ''
+          });
+          
+          completedOperations++;
+          sendSSEData(reply, { 
+            message: `➕ Added: "${raindrop.title}"`, 
+            type: 'success'
+          });
+
+          // Progress update
+          const progress = 80 + (completedOperations / totalOperations) * 20;
+          sendSSEData(reply, { progress: Math.round(progress) });
+          
+        } catch (error) {
+          sendSSEData(reply, { 
+            message: `❌ Failed to add: "${raindrop.title}" - ${error.message}`, 
+            type: 'error'
+          });
+        }
+      }
+    }
+
+    // Update existing items
+    if (toUpdate.length > 0) {
+      sendSSEData(reply, { message: `🔄 Updating ${toUpdate.length} existing pages...`, type: 'info' });
+      
+      for (const { raindrop, existingPage } of toUpdate) {
+        try {
+          await updateNotionPage(existingPage.id, {
+            name: raindrop.title,
+            url: raindrop.link,
+            tags: raindrop.tags || [],
+            excerpt: raindrop.excerpt || ''
+          });
+          
+          completedOperations++;
+          sendSSEData(reply, { 
+            message: `🔄 Updated: "${raindrop.title}"`, 
+            type: 'success'
+          });
+
+          // Progress update
+          const progress = 80 + (completedOperations / totalOperations) * 20;
+          sendSSEData(reply, { progress: Math.round(progress) });
+          
+        } catch (error) {
+          sendSSEData(reply, { 
+            message: `❌ Failed to update: "${raindrop.title}" - ${error.message}`, 
+            type: 'error'
+          });
+        }
+      }
+    }
+
+    // Delete orphaned items (full sync only)
+    if (toDelete.length > 0) {
+      sendSSEData(reply, { message: `🗑️ Removing ${toDelete.length} orphaned pages...`, type: 'info' });
+      
+      for (const page of toDelete) {
+        try {
+          await deleteNotionPage(page.id);
+          
+          completedOperations++;
+          const title = page.properties?.Name?.title?.[0]?.text?.content || 'Unknown';
+          sendSSEData(reply, { 
+            message: `🗑️ Removed: "${title}"`, 
+            type: 'success'
+          });
+
+          // Progress update
+          const progress = 80 + (completedOperations / totalOperations) * 20;
+          sendSSEData(reply, { progress: Math.round(progress) });
+          
+        } catch (error) {
+          const title = page.properties?.Name?.title?.[0]?.text?.content || 'Unknown';
+          sendSSEData(reply, { 
+            message: `❌ Failed to remove: "${title}" - ${error.message}`, 
+            type: 'error'
+          });
+        }
+      }
+    }
+
+    // Completion
+    const endTime = Date.now();
+    const duration = endTime - SYNC_START_TIME;
+    const durationStr = `${Math.round(duration / 1000)}s`;
+
+    sendSSEData(reply, { 
+      message: `✅ Smart Diff sync completed in ${durationStr}! Efficiency: ${efficiencyPercentage}%`, 
+      type: 'success',
+      progress: 100,
+      isComplete: true,
+      stats: {
+        added: toAdd.length,
+        updated: toUpdate.length,
+        skipped: toSkip.length,
+        deleted: toDelete.length,
+        duration: durationStr,
+        efficiency: efficiencyPercentage
+      }
+    });
+
+    return true;
+
   } catch (error) {
-    console.error('Error sending SSE data:', error);
+    console.error('Smart Diff sync error:', error);
+    sendSSEData(reply, { 
+      message: `❌ Sync failed: ${error.message}`, 
+      type: 'error',
+      isComplete: true,
+      hasError: true
+    });
+    throw error;
   }
 }
+
+// Routes
 
 // Main dashboard route
-app.get('/', { preHandler: requirePassword }, async (request, reply) => {
+fastify.get('/', { preHandler: requirePassword }, async (request, reply) => {
   try {
     return reply.view('index.hbs', {
-      raindropTotal: '...',
-      notionTotal: '...',
-      isSynced: false,
-      loading: true,
       password: request.query.password
     });
   } catch (error) {
-    app.log.error(error);
+    fastify.log.error(error);
     return reply.view('error.hbs', {
       error: error.message || 'Unknown error occurred',
       password: request.query.password
@@ -105,640 +327,212 @@ app.get('/', { preHandler: requirePassword }, async (request, reply) => {
   }
 });
 
-// API endpoint to get counts in background
-app.get('/api/counts', { preHandler: requirePassword }, async (request, reply) => {
-  try {
-    console.log('📊 Fetching counts for dashboard...');
-    
-    const raindropTotal = await raindropService.getRaindropTotal();
-    const notionTotal = await notionService.getTotalNotionPages();
-    const isSynced = raindropTotal === notionTotal;
-
-    return reply.send({
-      raindropTotal,
-      notionTotal,
-      isSynced,
-      success: true
-    });
-  } catch (error) {
-    app.log.error('Error fetching counts:', error);
-    return reply.code(500).send({
-      success: false,
-      error: error.message || 'Failed to fetch counts'
-    });
-  }
-});
-
-// Sync page routes (both incremental and full use same efficient logic)
-app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
-  const mode = request.query.mode || 'new';
-  return reply.view('sync.hbs', { 
-    mode,
+// Universal sync page (handles both incremental and full sync)
+fastify.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
+  return reply.view('sync.hbs', {
+    mode: request.query.mode || 'new',
     password: request.query.password
   });
 });
 
-app.get('/sync-all', { preHandler: requirePassword }, async (request, reply) => {
-  const mode = 'all';
-  return reply.view('sync-all.hbs', { 
-    mode,
+// Full sync page (redirects to universal sync with mode=all)
+fastify.get('/sync-all', { preHandler: requirePassword }, async (request, reply) => {
+  return reply.view('sync.hbs', {
+    mode: 'all',
     password: request.query.password
   });
 });
 
 // SSE route for streaming sync updates
-app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
-  const mode = request.query.mode || 'new';
-  const limit = parseInt(request.query.limit || '0', 10);
-  const streamId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+fastify.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
+  const mode = request.query.mode || 'all';
   
-  console.log(`🔗 NEW SYNC REQUEST: ${streamId}, mode: ${mode}`);
-  
-  // Set headers for SSE
-  reply.raw.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
-  });
-  
-  // Add this stream to active streams
-  activeStreams.set(streamId, reply);
-  console.log(`📡 Client connected. Active streams: ${activeStreams.size}`);
-  
-  // Keepalive interval
-  const keepAliveInterval = setInterval(() => {
-    if (activeStreams.has(streamId)) {
-      try {
-        reply.raw.write(": keepalive\n\n");
-      } catch (error) {
-        clearInterval(keepAliveInterval);
-        activeStreams.delete(streamId);
-      }
-    } else {
-      clearInterval(keepAliveInterval);
-    }
-  }, 30000);
-  
-  // Check if another sync is running
+  // Set SSE headers
+  reply.raw.setHeader('Content-Type', 'text/event-stream');
+  reply.raw.setHeader('Cache-Control', 'no-cache');
+  reply.raw.setHeader('Connection', 'keep-alive');
+  reply.raw.setHeader('Access-Control-Allow-Origin', '*');
+
+  // Check if another sync is already running
   if (GLOBAL_SYNC_LOCK) {
-    const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
-    console.log(`🚫 SYNC LOCK ACTIVE - Lock ID: ${SYNC_LOCK_ID}, Duration: ${lockDuration}s`);
-    
-    sendSSEData(reply, {
-      message: `⏸️ Sync already running (${lockDuration}s elapsed). Please wait...`,
-      type: 'waiting',
-      lockInfo: { locked: true, lockId: SYNC_LOCK_ID, duration: lockDuration }
+    const elapsedTime = Math.round((Date.now() - SYNC_START_TIME) / 1000);
+    sendSSEData(reply, { 
+      message: `⏸️ Sync already running (${elapsedTime}s elapsed). Please wait...`, 
+      type: 'warning'
     });
-    return;
+    return reply;
   }
-  
-  if (currentSync && currentSync.isRunning) {
-    const syncDuration = Math.round((Date.now() - currentSync.startTime) / 1000);
-    console.log(`🚫 CURRENT SYNC RUNNING - Duration: ${syncDuration}s`);
-    
-    sendSSEData(reply, {
-      message: `⏸️ Sync in progress (${syncDuration}s). Please wait...`,
-      counts: currentSync.counts || { added: 0, updated: 0, skipped: 0 },
-      type: 'waiting'
-    });
-    return;
-  }
-  
-  // Set global lock
+
+  // Set sync lock
   GLOBAL_SYNC_LOCK = true;
   SYNC_START_TIME = Date.now();
-  SYNC_LOCK_ID = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-  
-  console.log(`🔐 SETTING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
-  
-  // Create new sync process
+  SYNC_LOCK_ID = `sync_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+  // Store current sync info
   currentSync = {
-    mode,
-    limit,
-    isRunning: true,
-    lockId: SYNC_LOCK_ID,
-    startTime: Date.now(),
-    counts: { added: 0, updated: 0, skipped: 0, deleted: 0 },
-    completed: false
+    id: SYNC_LOCK_ID,
+    mode: mode,
+    startTime: SYNC_START_TIME,
+    isRunning: true
   };
-  
+
+  // Handle client disconnect
+  request.raw.on('close', () => {
+    console.log('Client disconnected from sync stream');
+  });
+
   // Start sync process
-  performSmartDiffSync(mode, limit)
+  performSmartDiffSync(mode, reply)
     .then(() => {
-      console.log(`✅ Sync completed successfully - Lock ID: ${SYNC_LOCK_ID}`);
+      console.log('Sync completed successfully');
     })
-    .catch(error => {
-      console.error(`❌ SYNC ERROR - Lock ID: ${SYNC_LOCK_ID}:`, error);
-      broadcastSSEData({
-        message: `Sync failed: ${error.message}`,
-        type: 'failed',
-        complete: true
-      });
+    .catch((error) => {
+      console.error('Sync failed:', error);
     })
     .finally(() => {
-      // Always release lock
-      console.log(`🔓 RELEASING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
+      // Clear sync lock
       GLOBAL_SYNC_LOCK = false;
       SYNC_START_TIME = null;
       SYNC_LOCK_ID = null;
+      currentSync = null;
       
-      if (currentSync) {
-        currentSync.isRunning = false;
-        currentSync = null;
-      }
+      // Close connection
+      reply.raw.end();
     });
-  
-  // Handle client disconnect
-  request.raw.on('close', () => {
-    if (activeStreams.has(streamId)) {
-      console.log(`📡 Client disconnected: ${streamId}`);
-      activeStreams.delete(streamId);
-    }
-    clearInterval(keepAliveInterval);
-  });
+
+  return reply;
 });
 
-// OPTIMIZED SMART DIFF SYNC FUNCTION
-async function performSmartDiffSync(mode, limit) {
-  const lockId = currentSync ? currentSync.lockId : 'unknown';
-  console.log(`🧠 Smart Diff Sync starting - Lock ID: ${lockId}, mode: ${mode}`);
-  
-  if (!GLOBAL_SYNC_LOCK) {
-    throw new Error('Sync started without global lock - aborting');
-  }
-  
-  let addedCount = 0;
-  let updatedCount = 0;
-  let skippedCount = 0;
-  let deletedCount = 0;
-  let failedCount = 0;
-  
+// API endpoint for counts
+fastify.get('/api/counts', { preHandler: requirePassword }, async (request, reply) => {
   try {
-    const isFullSync = mode === 'all';
-    
-    // Helper to send progress updates
-    const sendUpdate = (message, type = '') => {
-      console.log(`🧠 [${lockId}] ${message}`);
-      
-      const updateData = {
-        message: `${message}`,
-        type,
-        counts: { added: addedCount, updated: updatedCount, skipped: skippedCount, deleted: deletedCount },
-        lockInfo: {
-          locked: GLOBAL_SYNC_LOCK,
-          lockId: lockId,
-          duration: SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0
-        }
-      };
-      
-      // Update current sync state
-      if (currentSync) {
-        currentSync.counts = updateData.counts;
-      }
-      
-      broadcastSSEData(updateData);
+    // Fetch counts in parallel for efficiency
+    const [raindrops, notionPages] = await Promise.all([
+      getRaindrops(),
+      getNotionPages()
+    ]);
+
+    const counts = {
+      raindropTotal: raindrops.length,
+      notionTotal: notionPages.length,
+      lastUpdated: new Date().toISOString(),
+      isSynced: Math.abs(raindrops.length - notionPages.length) <= 5 // Allow small difference
     };
-    
-    sendUpdate(`🧠 Starting Smart Diff Sync (${isFullSync ? 'full' : 'incremental'})`, 'info');
-    
-    // === STEP 1: FETCH ALL DATA (EFFICIENT) ===
-    sendUpdate('📡 Fetching raindrops...', 'fetching');
-    let raindrops = [];
-    try {
-      if (mode === 'new') {
-        raindrops = await raindropService.getRecentRaindrops();
-      } else if (mode === 'dev') {
-        raindrops = await raindropService.getAllRaindrops(limit || 5);
-      } else {
-        raindrops = await raindropService.getAllRaindrops(limit);
-      }
-    } catch (error) {
-      throw new Error(`Failed to fetch raindrops: ${error.message}`);
-    }
-    
-    sendUpdate(`✅ Found ${raindrops.length} raindrops`, 'success');
-    
-    if (raindrops.length === 0) {
-      sendUpdate('No raindrops to process. Sync complete.', 'complete');
-      broadcastSSEData({ complete: true });
-      return;
-    }
-    
-    sendUpdate('📡 Fetching Notion pages...', 'fetching');
-    let notionPages = [];
-    try {
-      notionPages = await notionService.getNotionPages();
-    } catch (error) {
-      throw new Error(`Failed to fetch Notion pages: ${error.message}`);
-    }
-    
-    sendUpdate(`✅ Found ${notionPages.length} Notion pages`, 'success');
-    
-    // === STEP 2: BUILD LOOKUP MAPS ===
-    sendUpdate('🗺️ Building lookup maps...', 'processing');
-    const { notionPagesByUrl, notionPagesByTitle, raindropUrlSet } = 
-      buildLookupMaps(notionPages, raindrops);
-    
-    // === STEP 3: SMART DIFF ANALYSIS ===
-    sendUpdate('🔍 Performing Smart Diff analysis...', 'processing');
-    
-    const itemsToAdd = [];
-    const itemsToUpdate = [];
-    const itemsToSkip = [];
-    const pagesToDelete = [];
-    
-    // Analyze raindrops for changes
-    for (const item of raindrops) {
-      const normUrl = normalizeUrl(item.link);
-      const normTitle = normalizeTitle(item.title);
-      
-      const existingPage = notionPagesByUrl.get(normUrl) || notionPagesByTitle.get(normTitle);
-      
-      if (existingPage) {
-        // Check if update needed
-        const currentTitle = existingPage.properties?.Name?.title?.[0]?.text?.content || '';
-        const currentUrl = existingPage.properties?.URL?.url || '';
-        
-        const currentTags = new Set();
-        if (existingPage.properties?.Tags?.multi_select) {
-          existingPage.properties.Tags.multi_select.forEach(tag => {
-            currentTags.add(tag.name);
-          });
-        }
-        
-        const needsUpdate = 
-          (normalizeTitle(currentTitle) !== normalizeTitle(item.title)) ||
-          (normalizeUrl(currentUrl) !== normUrl) ||
-          !tagsMatch(currentTags, item.tags || []);
-        
-        if (needsUpdate) {
-          itemsToUpdate.push({ item, existingPage });
-        } else {
-          itemsToSkip.push(item);
-        }
-      } else {
-        itemsToAdd.push(item);
-      }
-    }
-    
-    // Find pages to delete (full sync only)
-    if (isFullSync) {
-      for (const [url, page] of notionPagesByUrl.entries()) {
-        if (!raindropUrlSet.has(url)) {
-          pagesToDelete.push(page);
-        }
-      }
-    }
-    
-    const totalOperations = itemsToAdd.length + itemsToUpdate.length + pagesToDelete.length;
-    skippedCount = itemsToSkip.length;
-    
-    sendUpdate(`🔍 Smart Diff complete: ${itemsToAdd.length} to add, ${itemsToUpdate.length} to update, ${itemsToSkip.length} to skip, ${pagesToDelete.length} to delete`, 'analysis');
-    
-    if (totalOperations === 0) {
-      sendUpdate('🎉 Everything already in sync! No changes needed.', 'complete');
-      broadcastSSEData({ complete: true, counts: { added: 0, updated: 0, skipped: skippedCount, deleted: 0 } });
-      return;
-    }
-    
-    const efficiency = Math.round((totalOperations / raindrops.length) * 100);
-    sendUpdate(`🚀 Processing ${totalOperations} operations (${efficiency}% efficiency vs 100% in old system)`, 'info');
-    
-    // === STEP 4: PROCESS ONLY THE DIFFERENCES ===
-    
-    // Process additions
-    if (itemsToAdd.length > 0) {
-      sendUpdate(`➕ Creating ${itemsToAdd.length} new pages...`, 'processing');
-      
-      const addBatches = chunkArray(itemsToAdd, 3);
-      for (let i = 0; i < addBatches.length; i++) {
-        const batch = addBatches[i];
-        
-        for (const item of batch) {
-          try {
-            const result = await notionService.createNotionPage(item);
-            if (result.success) {
-              sendUpdate(`✅ Created: "${item.title}"`, 'added');
-              addedCount++;
-              // Update lookup maps for subsequent operations
-              notionPagesByUrl.set(normalizeUrl(item.link), { id: result.pageId });
-              notionPagesByTitle.set(normalizeTitle(item.title), { id: result.pageId });
-            } else {
-              sendUpdate(`❌ Failed to create: "${item.title}"`, 'failed');
-              failedCount++;
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-          } catch (error) {
-            sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
-            failedCount++;
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-    }
-    
-    // Process updates
-    if (itemsToUpdate.length > 0) {
-      sendUpdate(`🔄 Updating ${itemsToUpdate.length} existing pages...`, 'processing');
-      
-      const updateBatches = chunkArray(itemsToUpdate, 3);
-      for (let i = 0; i < updateBatches.length; i++) {
-        const batch = updateBatches[i];
-        
-        for (const { item, existingPage } of batch) {
-          try {
-            const success = await notionService.updateNotionPage(existingPage.id, item);
-            if (success) {
-              sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
-              updatedCount++;
-            } else {
-              sendUpdate(`❌ Failed to update: "${item.title}"`, 'failed');
-              failedCount++;
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 300));
-            
-          } catch (error) {
-            sendUpdate(`❌ Error updating "${item.title}": ${error.message}`, 'failed');
-            failedCount++;
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-    }
-    
-    // Process deletions
-    if (pagesToDelete.length > 0) {
-      sendUpdate(`🗑️ Deleting ${pagesToDelete.length} obsolete pages...`, 'processing');
-      
-      const deleteBatches = chunkArray(pagesToDelete, 2);
-      for (let i = 0; i < deleteBatches.length; i++) {
-        const batch = deleteBatches[i];
-        
-        for (const page of batch) {
-          try {
-            const url = page.properties?.URL?.url || 'Unknown URL';
-            await notionService.deleteNotionPage(page.id);
-            sendUpdate(`🗑️ Deleted: ${url}`, 'deleted');
-            deletedCount++;
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-          } catch (error) {
-            sendUpdate(`❌ Error deleting page: ${error.message}`, 'failed');
-            failedCount++;
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, 750));
-      }
-    }
-    
-    // Final summary
-    const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
-    const finalEfficiency = Math.round((totalOperations / raindrops.length) * 100);
-    
-    sendUpdate(`🎉 Smart Diff Sync completed in ${duration}s!`, 'complete');
-    sendUpdate(`📊 Efficiency: ${totalOperations}/${raindrops.length} items processed (${finalEfficiency}% vs 100% in old system)`, 'info');
-    sendUpdate(`📈 Results: ${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped, ${deletedCount} deleted, ${failedCount} failed`, 'summary');
-    
-    console.log(`✅ [${lockId}] SMART DIFF COMPLETE: ${duration}s, ${finalEfficiency}% efficiency`);
-    
-    if (currentSync) {
-      currentSync.completed = true;
-      currentSync.isRunning = false;
-    }
-    
-    broadcastSSEData({ 
-      complete: true,
-      finalCounts: { added: addedCount, updated: updatedCount, skipped: skippedCount, deleted: deletedCount, failed: failedCount },
-      efficiency: { itemsProcessed: totalOperations, totalItems: raindrops.length, percentage: finalEfficiency, duration }
-    });
-    
+
+    reply.send(counts);
   } catch (error) {
-    console.error(`❌ [${lockId}] SMART DIFF ERROR:`, error);
-    broadcastSSEData({
-      message: `Smart Diff Sync failed: ${error.message}`,
-      type: 'failed',
-      complete: true
-    });
-    throw error;
+    fastify.log.error('Error fetching counts:', error);
+    reply.code(500).send({ error: 'Failed to fetch counts' });
   }
-}
-
-// Helper function to build lookup maps
-function buildLookupMaps(notionPages, raindrops) {
-  const notionPagesByUrl = new Map();
-  const notionPagesByTitle = new Map();
-  const raindropUrlSet = new Set();
-  
-  // Process Notion pages
-  for (const page of notionPages) {
-    const url = page.properties?.URL?.url;
-    const title = page.properties?.Name?.title?.[0]?.text?.content;
-    
-    if (url) {
-      notionPagesByUrl.set(normalizeUrl(url), page);
-    }
-    
-    if (title) {
-      notionPagesByTitle.set(normalizeTitle(title), page);
-    }
-  }
-  
-  // Process raindrops
-  for (const item of raindrops) {
-    raindropUrlSet.add(normalizeUrl(item.link));
-  }
-  
-  return { notionPagesByUrl, notionPagesByTitle, raindropUrlSet };
-}
-
-// Helper function to compare tags
-function tagsMatch(currentTags, newTags) {
-  if (currentTags.size !== newTags.length) {
-    return false;
-  }
-  
-  for (const tag of newTags) {
-    if (!currentTags.has(tag)) {
-      return false;
-    }
-  }
-  
-  return true;
-}
-
-// Helper function to normalize URLs
-function normalizeUrl(url) {
-  try {
-    const u = new URL(url);
-    u.hash = '';
-    u.search = '';
-    return u.href.replace(/\/$/, '').toLowerCase();
-  } catch {
-    return url;
-  }
-}
-
-// Helper function to normalize titles
-function normalizeTitle(title) {
-  return (title || '').trim().toLowerCase();
-}
-
-// Helper function to chunk arrays
-function chunkArray(arr, size) {
-  const result = [];
-  for (let i = 0; i < arr.length; i += size) {
-    result.push(arr.slice(i, i + size));
-  }
-  return result;
-}
-
-// Utility routes
-app.get('/ping', async (request, reply) => {
-  return { status: 'ok' };
 });
 
-app.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) => {
-  const diagnostics = {
-    timestamp: new Date().toISOString(),
-    sync_status: {
-      active_sync: currentSync ? {
-        mode: currentSync.mode,
-        started: new Date(currentSync.startTime).toISOString(),
-        completed: currentSync.completed,
-        isRunning: currentSync.isRunning,
-        counts: currentSync.counts
-      } : null,
-      active_streams: activeStreams.size,
-      global_sync_lock: GLOBAL_SYNC_LOCK,
-      sync_lock_id: SYNC_LOCK_ID
-    },
-    environment_variables: {
-      RAINDROP_TOKEN: process.env.RAINDROP_TOKEN ? 'Set ✓' : 'Missing ✗',
-      NOTION_TOKEN: process.env.NOTION_TOKEN ? 'Set ✓' : 'Missing ✗',
-      NOTION_DB_ID: process.env.NOTION_DB_ID ? 'Set ✓' : 'Missing ✗',
-      ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ? 'Set ✓' : 'Using default'
-    },
-    api_tests: {}
-  };
-
-  // Test API connections
+// Diagnostic route
+fastify.get('/diagnostic', { preHandler: requirePassword }, async (request, reply) => {
   try {
-    const raindropTotal = await raindropService.getRaindropTotal();
-    diagnostics.api_tests.raindrop = {
-      status: 'Connected ✓',
-      total_items: raindropTotal,
-      message: 'Successfully connected to Raindrop.io API'
-    };
-  } catch (error) {
-    diagnostics.api_tests.raindrop = {
-      status: 'Failed ✗',
-      error: error.message,
-      message: 'Unable to connect to Raindrop.io API'
-    };
-  }
+    const [raindrops, notionPages] = await Promise.all([
+      getRaindrops().catch(e => ({ error: e.message })),
+      getNotionPages().catch(e => ({ error: e.message }))
+    ]);
 
-  try {
-    const notionTotal = await notionService.getTotalNotionPages();
-    diagnostics.api_tests.notion = {
-      status: 'Connected ✓',
-      total_pages: notionTotal,
-      message: 'Successfully connected to Notion API'
+    const diagnostic = {
+      timestamp: new Date().toISOString(),
+      raindrop: {
+        status: raindrops.error ? 'error' : 'ok',
+        count: raindrops.error ? 0 : raindrops.length,
+        error: raindrops.error
+      },
+      notion: {
+        status: notionPages.error ? 'error' : 'ok',
+        count: notionPages.error ? 0 : notionPages.length,
+        error: notionPages.error
+      },
+      sync: {
+        locked: GLOBAL_SYNC_LOCK,
+        lockId: SYNC_LOCK_ID,
+        startTime: SYNC_START_TIME,
+        currentSync: currentSync
+      },
+      environment: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        memory: process.memoryUsage()
+      }
     };
-  } catch (error) {
-    diagnostics.api_tests.notion = {
-      status: 'Failed ✗',
-      error: error.message,
-      message: 'Unable to connect to Notion API'
-    };
-  }
 
-  return reply
-    .header('Content-Type', 'application/json')
-    .send(JSON.stringify(diagnostics, null, 2));
+    reply.send(diagnostic);
+  } catch (error) {
+    fastify.log.error('Diagnostic error:', error);
+    reply.code(500).send({ error: 'Diagnostic failed' });
+  }
 });
 
-app.get('/sync-debug', { preHandler: requirePassword }, async (request, reply) => {
+// Debug route for sync status
+fastify.get('/sync-debug', { preHandler: requirePassword }, async (request, reply) => {
   const debug = {
-    timestamp: new Date().toISOString(),
-    globalSyncLock: GLOBAL_SYNC_LOCK || false,
-    syncStartTime: SYNC_START_TIME,
+    syncInProgress: GLOBAL_SYNC_LOCK,
     syncLockId: SYNC_LOCK_ID,
-    currentSync: currentSync ? {
-      mode: currentSync.mode,
-      isRunning: currentSync.isRunning,
-      completed: currentSync.completed,
-      lockId: currentSync.lockId,
-      startTime: new Date(currentSync.startTime).toISOString(),
-      counts: currentSync.counts
-    } : null,
-    activeStreams: {
-      count: activeStreams.size,
-      streamIds: Array.from(activeStreams.keys())
-    },
-    suggestions: []
+    syncStartTime: SYNC_START_TIME,
+    currentSync: currentSync,
+    timestamp: new Date().toISOString()
   };
-  
-  if (GLOBAL_SYNC_LOCK) {
-    const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
-    debug.suggestions.push(`Sync locked for ${lockDuration}s - this is normal during active sync`);
+
+  if (SYNC_START_TIME) {
+    debug.elapsedTime = Date.now() - SYNC_START_TIME;
+    debug.elapsedTimeFormatted = `${Math.round(debug.elapsedTime / 1000)}s`;
   }
-  
-  if (activeStreams.size > 1) {
-    debug.suggestions.push(`⚠️ Multiple streams (${activeStreams.size}) detected`);
-  }
-  
-  if (!GLOBAL_SYNC_LOCK && !currentSync) {
-    debug.suggestions.push('✅ No active sync - ready to start new sync');
-  }
-  
-  return reply
-    .header('Content-Type', 'application/json')
-    .send(JSON.stringify(debug, null, 2));
+
+  reply.send(debug);
 });
 
-app.get('/test-sync-lock', { preHandler: requirePassword }, async (request, reply) => {
+// Lock management route
+fastify.get('/test-sync-lock', { preHandler: requirePassword }, async (request, reply) => {
   const action = request.query.action;
-  
-  if (action === 'set') {
-    GLOBAL_SYNC_LOCK = true;
-    SYNC_START_TIME = Date.now();
-    SYNC_LOCK_ID = `test_${Date.now()}`;
-    return reply.send({ message: 'Lock set', lockId: SYNC_LOCK_ID });
-  }
   
   if (action === 'clear') {
     GLOBAL_SYNC_LOCK = false;
     SYNC_START_TIME = null;
-    const oldLockId = SYNC_LOCK_ID;
     SYNC_LOCK_ID = null;
-    return reply.send({ message: 'Lock cleared', previousLockId: oldLockId });
+    currentSync = null;
+    
+    reply.send({ 
+      message: 'Sync lock cleared',
+      timestamp: new Date().toISOString()
+    });
+  } else {
+    reply.send({
+      locked: GLOBAL_SYNC_LOCK,
+      lockId: SYNC_LOCK_ID,
+      startTime: SYNC_START_TIME,
+      currentSync: currentSync,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Error handler
+fastify.setErrorHandler((error, request, reply) => {
+  fastify.log.error(error);
+  
+  // Check if it's a password error
+  if (error.statusCode === 401) {
+    reply.code(401).send('Unauthorized - Invalid password');
+    return;
   }
   
-  return reply.send({ 
-    message: 'Use ?action=set or ?action=clear', 
-    currentLock: GLOBAL_SYNC_LOCK,
-    lockId: SYNC_LOCK_ID 
+  reply.code(500).send({ 
+    error: 'Internal Server Error',
+    message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
   });
 });
 
-// Start the server
-const start = async () => {
-  try {
-    await app.listen({ port: process.env.PORT || 3000, host: '0.0.0.0' });
-    console.log(`🚀 Server running at http://localhost:${process.env.PORT || 3000}`);
-  } catch (err) {
-    app.log.error(err);
-    process.exit(1);
-  }
-};
+// Health check
+fastify.get('/health', async (request, reply) => {
+  reply.send({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    version: process.env.npm_package_version || '1.0.0'
+  });
+});
 
-start();
+// Export for Vercel
+module.exports = fastify;

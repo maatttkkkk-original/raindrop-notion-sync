@@ -2,199 +2,113 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Raindrop/Notion Sync</title>
-  <link rel="stylesheet" href="/public/style.css">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  
+  <!-- CSS Files -->
+  <link rel="stylesheet" href="/public/styles/design-system.css">
+  <link rel="stylesheet" href="/public/styles/dashboard.css">
+  <link rel="stylesheet" href="/public/styles/components.css">
+  
+  <!-- Preload critical assets -->
+  <link rel="preload" href="/public/fonts/helvetica-neue.woff2" as="font" type="font/woff2" crossorigin>
 </head>
 <body>
   <div class="container">
-    <div class="toggle-container">
-      <div id="sync-indicator" class="toggle-indicator not-synced"></div>
-    </div>
-    
-    <h1 class="title">Raindrop/Notion Sync</h1>
-    
-    <div id="raindrop-count" class="raindrop-count not-synced-text">
-      <span id="raindrop-total">{{raindropTotal}}</span> Raindrops
-      <span id="raindrop-loader" class="loader" style="display: {{#if loading}}inline{{else}}none{{/if}};">⟳</span>
-    </div>
-    
-    <div id="notion-count" class="notion-count not-synced-text">
-      <span id="notion-total">{{notionTotal}}</span> Notion Pages
-      <span id="notion-loader" class="loader" style="display: {{#if loading}}inline{{else}}none{{/if}};">⟳</span>
-    </div>
-    
-    <div id="error-message" class="error-message" style="display: none; color: #e74c3c; margin: 1rem 0; text-align: center;">
-      Failed to load counts. <button id="retry-btn" style="background: none; border: none; color: #3498db; cursor: pointer; text-decoration: underline;">Retry</button>
-    </div>
-    
-    <div class="actions-container">
-      <a href="/sync?password={{password}}&mode=new" class="sync-new">Sync New ↻</a>
-      <a href="/sync?password={{password}}&mode=all" class="full-sync" id="full-sync-btn">Reset / Full</a>
-      <a href="/diagnostic?password={{password}}" id="diagnostic-link" style="display: block; font-size: 1.5rem; margin-top: 1rem; color: #333;">Run Diagnostic ↻</a>
-    </div>
+    <main class="dashboard" role="main">
+      <!-- Status Indicator -->
+      <div 
+        id="status-indicator" 
+        class="status-indicator not-synced" 
+        role="img" 
+        aria-label="Sync status indicator"
+      ></div>
+      
+      <!-- Title -->
+      <h1 class="dashboard-title text-huge text-primary">
+        Raindrop/Notion Sync
+      </h1>
+      
+      <!-- Count Displays -->
+      <div class="count-display loading" id="raindrop-display">
+        <span class="text-huge" id="raindrop-count">...</span>
+        <span class="text-huge"> Raindrop Bookmarks</span>
+        <span class="loading-spinner visually-hidden" id="raindrop-spinner" aria-hidden="true">⟳</span>
+      </div>
+      
+      <div class="count-display loading" id="notion-display">
+        <span class="text-huge" id="notion-count">...</span>
+        <span class="text-huge"> Notion Pages</span>
+        <span class="loading-spinner visually-hidden" id="notion-spinner" aria-hidden="true">⟳</span>
+      </div>
+      
+      <!-- Status Message -->
+      <div 
+        id="status-message" 
+        class="status-message calculating text-huge" 
+        role="status" 
+        aria-live="polite"
+      >
+        Calculating sync status...
+      </div>
+      
+      <!-- Error Message -->
+      <div id="error-message" class="error-message d-none" role="alert">
+        <p>Failed to load sync status.</p>
+        <button id="retry-button" class="retry-button" type="button">
+          Retry
+        </button>
+      </div>
+      
+      <!-- Action Buttons -->
+      <div class="dashboard-actions" role="navigation" aria-label="Sync actions">
+        <a 
+          href="/sync?password={{password}}&mode=new" 
+          class="action-button primary"
+          id="sync-new-button"
+        >
+          Sync New ↻
+        </a>
+        
+        <a 
+          href="/sync-all?password={{password}}" 
+          class="action-button secondary"
+          id="full-sync-button"
+        >
+          Reset / FullSync
+        </a>
+      </div>
+      
+      <!-- Decorative Lines -->
+      <div class="decorative-lines" aria-hidden="true">
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+      </div>
+    </main>
   </div>
-
   
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="loading-overlay d-none" aria-hidden="true">
+    <div class="loading-spinner-large"></div>
+  </div>
   
-  <style>
-    .loader {
-      animation: spin 1s linear infinite;
-      margin-left: 0.5rem;
-      color: #3498db;
-    }
-    
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    
-    .error-message {
-      background: rgba(231, 76, 60, 0.1);
-      padding: 1rem;
-      border-radius: 8px;
-      border: 1px solid rgba(231, 76, 60, 0.3);
-    }
-    
-    .synced-text {
-      color: #27ae60 !important;
-    }
-    
-    .not-synced-text {
-      color: #e74c3c !important;
-    }
-    
-    .toggle-indicator.synced {
-      background: #27ae60;
-    }
-    
-    .toggle-indicator.not-synced {
-      background: #e74c3c;
-    }
-    
-    .toggle-indicator.loading {
-      background: #f39c12;
-      animation: pulse 1.5s ease-in-out infinite;
-    }
-    
-    @keyframes pulse {
-      0% { opacity: 1; }
-      50% { opacity: 0.5; }
-      100% { opacity: 1; }
-    }
-  </style>
+  <!-- JavaScript -->
+  <script src="/public/scripts/utils.js"></script>
+  <script src="/public/scripts/dashboard.js"></script>
   
   <script>
-    const password = '{{password}}';
-    let retryCount = 0;
-    const maxRetries = 3;
-    
-    // Elements
-    const syncIndicator = document.getElementById('sync-indicator');
-    const raindropTotal = document.getElementById('raindrop-total');
-    const notionTotal = document.getElementById('notion-total');
-    const raindropLoader = document.getElementById('raindrop-loader');
-    const notionLoader = document.getElementById('notion-loader');
-    const raindropCount = document.getElementById('raindrop-count');
-    const notionCount = document.getElementById('notion-count');
-    const fullSyncBtn = document.getElementById('full-sync-btn');
-    const diagnosticLink = document.getElementById('diagnostic-link');
-    const errorMessage = document.getElementById('error-message');
-    const retryBtn = document.getElementById('retry-btn');
-    
-    // Load counts in background
-    async function loadCounts() {
-      try {
-        console.log('📊 Loading counts...');
-        
-        // Show loading state
-        syncIndicator.className = 'toggle-indicator loading';
-        raindropLoader.style.display = 'inline';
-        notionLoader.style.display = 'inline';
-        errorMessage.style.display = 'none';
-        
-        const response = await fetch(`/api/counts?password=${password}`);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        
-        if (!data.success) {
-          throw new Error(data.error || 'Failed to load counts');
-        }
-        
-        // Update the display
-        raindropTotal.textContent = data.raindropTotal;
-        notionTotal.textContent = data.notionTotal;
-        
-        // Update sync status
-        if (data.isSynced) {
-          syncIndicator.className = 'toggle-indicator synced';
-          raindropCount.className = 'raindrop-count synced-text';
-          notionCount.className = 'notion-count synced-text';
-          fullSyncBtn.className = 'full-sync';
-          diagnosticLink.style.display = 'none';
-        } else {
-          syncIndicator.className = 'toggle-indicator not-synced';
-          raindropCount.className = 'raindrop-count not-synced-text';
-          notionCount.className = 'notion-count not-synced-text';
-          fullSyncBtn.className = 'full-sync active';
-          diagnosticLink.style.display = 'block';
-        }
-        
-        // Hide loaders
-        raindropLoader.style.display = 'none';
-        notionLoader.style.display = 'none';
-        
-        console.log('✅ Counts loaded successfully');
-        retryCount = 0; // Reset retry count on success
-        
-      } catch (error) {
-        console.error('❌ Error loading counts:', error);
-        
-        // Show error state
-        syncIndicator.className = 'toggle-indicator not-synced';
-        raindropTotal.textContent = 'Error';
-        notionTotal.textContent = 'Error';
-        raindropLoader.style.display = 'none';
-        notionLoader.style.display = 'none';
-        
-        // Show error message with retry option
-        errorMessage.style.display = 'block';
-        
-        // Auto-retry up to maxRetries times
-        if (retryCount < maxRetries) {
-          retryCount++;
-          console.log(`🔄 Auto-retrying in 3 seconds (attempt ${retryCount}/${maxRetries})...`);
-          setTimeout(() => {
-            loadCounts();
-          }, 3000);
-        }
+    // Initialize dashboard with password
+    document.addEventListener('DOMContentLoaded', function() {
+      const password = '{{password}}';
+      if (window.Dashboard) {
+        window.Dashboard.init(password);
       }
-    }
-    
-    // Manual retry
-    retryBtn.addEventListener('click', () => {
-      retryCount = 0; // Reset retry count for manual retry
-      loadCounts();
-    });
-    
-    // Load counts when page loads
-    document.addEventListener('DOMContentLoaded', () => {
-      console.log('🚀 Page loaded instantly! Loading counts in background...');
-      loadCounts();
-    });
-    
-    // Add touchstart event listeners for mobile devices
-    document.querySelectorAll('a').forEach(link => {
-      link.addEventListener('touchstart', function() {
-        this.classList.add('touched');
-      });
-      link.addEventListener('touchend', function() {
-        this.classList.remove('touched');
-      });
     });
   </script>
 </body>

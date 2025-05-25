@@ -2,372 +2,157 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Full Sync - Smart Diff</title>
-  <link rel="stylesheet" href="/public/style.css">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Full Sync - Smart Diff Technology</title>
+  
+  <!-- CSS Files -->
+  <link rel="stylesheet" href="/public/styles/design-system.css">
+  <link rel="stylesheet" href="/public/styles/sync.css">
+  <link rel="stylesheet" href="/public/styles/components.css">
+  
+  <!-- Preload critical assets -->
+  <link rel="preload" href="/public/fonts/helvetica-neue.woff2" as="font" type="font/woff2" crossorigin>
 </head>
 <body>
   <div class="container">
-    <div class="toggle-container">
-      <div id="status-indicator" class="toggle-indicator not-synced"></div>
-    </div>
-    
-    <h1 class="sync-title">Full Sync - Smart Diff</h1>
-    
-    <div class="sync-description">
-      <p><strong>🧠 Smart Diff Technology:</strong> Analyzes all your data and processes only what needs changes.</p>
-      <p><strong>⚡ 10x Faster:</strong> Typical full sync now completes in 1-2 minutes instead of 10+ minutes.</p>
-      <p><strong>🎯 Efficient:</strong> Only processes differences, not all 1,300+ items.</p>
-    </div>
-    
-    <div id="sync-controls" class="actions-container">
-      <button id="start-sync-btn" class="sync-new">Start Smart Diff Sync</button>
-      <a href="/?password={{password}}" class="back-button">Back ↤</a>
-    </div>
-    
-    <div id="sync-progress" class="sync-progress" style="display: none;">
-      <div class="sync-stats">
-        <span id="added-count">0</span> added, 
-        <span id="updated-count">0</span> updated, 
-        <span id="skipped-count">0</span> skipped,
-        <span id="deleted-count">0</span> deleted
+    <main class="sync-page" role="main">
+      <!-- Status Indicator -->
+      <div 
+        id="sync-status-indicator" 
+        class="sync-status-indicator not-synced" 
+        role="img" 
+        aria-label="Sync status indicator"
+      ></div>
+      
+      <!-- Header -->
+      <header class="sync-header">
+        <h1 class="sync-title text-huge text-primary">
+          Full Sync - Smart Diff
+        </h1>
+        
+        <div class="sync-description">
+          <p><strong>🧠 Smart Diff Technology:</strong> Analyzes all your data and processes only what needs changes.</p>
+          <p><strong>⚡ 10x Faster:</strong> Typical full sync completes in 1-2 minutes instead of 10+ minutes.</p>
+          <p><strong>🎯 Efficient:</strong> Only processes differences, not all 1,300+ items.</p>
+        </div>
+      </header>
+      
+      <!-- Sync Controls -->
+      <div id="sync-controls" class="sync-controls">
+        <button 
+          id="start-sync-button" 
+          class="sync-button" 
+          type="button"
+          aria-describedby="sync-description"
+        >
+          Start Smart Diff Sync
+        </button>
+        
+        <a 
+          href="/?password={{password}}" 
+          class="back-button"
+          aria-label="Return to dashboard"
+        >
+          Back ↤
+        </a>
       </div>
       
-      <div class="efficiency-display" style="margin: 15px 0; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; color: white;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-          <strong>Smart Diff Efficiency:</strong>
-          <span id="efficiency-percentage" style="font-weight: bold; font-size: 1.2em;">Analyzing...</span>
+      <!-- Sync Progress (Hidden Initially) -->
+      <div id="sync-progress" class="sync-progress hidden" role="region" aria-live="polite">
+        <!-- Connection Status -->
+        <div id="connection-status" class="connection-status connecting">
+          Connecting to sync stream...
         </div>
-        <div style="margin-bottom: 8px;">
-          <strong>Processing:</strong>
-          <span id="operations-count" style="color: #e8f4ff;">Calculating differences...</span>
+        
+        <!-- Progress Stats -->
+        <div class="sync-stats" role="status">
+          <div class="sync-stat added">
+            <span id="added-count" class="sync-stat-number">0</span>
+            <span>added</span>
+          </div>
+          <div class="sync-stat updated">
+            <span id="updated-count" class="sync-stat-number">0</span>
+            <span>updated</span>
+          </div>
+          <div class="sync-stat skipped">
+            <span id="skipped-count" class="sync-stat-number">0</span>
+            <span>skipped</span>
+          </div>
+          <div class="sync-stat deleted">
+            <span id="deleted-count" class="sync-stat-number">0</span>
+            <span>deleted</span>
+          </div>
         </div>
-        <div style="font-size: 0.9em; opacity: 0.9;">
-          <span id="sync-status">🧠 Smart Diff Technology Active</span>
+        
+        <!-- Efficiency Display -->
+        <div class="efficiency-display">
+          <div class="efficiency-header">
+            <span>Smart Diff Efficiency:</span>
+            <span id="efficiency-percentage">Analyzing...</span>
+          </div>
+          <div class="efficiency-details">
+            <strong>Processing:</strong>
+            <span id="operations-count">Calculating differences...</span>
+          </div>
+          <div class="efficiency-status" id="efficiency-status">
+            🧠 Smart Diff Technology Active
+          </div>
+        </div>
+        
+        <!-- Live Updates -->
+        <div class="live-updates" role="log" aria-live="polite" aria-label="Sync progress updates">
+          <div id="sync-updates">
+            <div class="sync-update info">🚀 Ready to start Smart Diff Sync...</div>
+          </div>
+        </div>
+        
+        <!-- Cancel Button -->
+        <div class="sync-controls">
+          <button 
+            id="cancel-sync-button" 
+            class="cancel-button" 
+            type="button"
+            aria-label="Cancel sync operation"
+          >
+            Cancel Sync
+          </button>
         </div>
       </div>
       
-      <div class="live-updates" id="updates">
-        <div class="sync-item">🚀 Ready to start Smart Diff Sync...</div>
+      <!-- Decorative Lines -->
+      <div class="decorative-lines" aria-hidden="true">
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
       </div>
-      
-      <div class="actions-container">
-        <button id="cancel-sync-btn" class="back-button" style="background: #e74c3c;">Cancel Sync</button>
-      </div>
-    </div>
+    </main>
   </div>
-
-  <style>
-    .sync-description {
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      color: white;
-      padding: 20px;
-      border-radius: 12px;
-      margin: 20px 0;
-      text-align: left;
-    }
-    
-    .sync-description p {
-      margin: 8px 0;
-      font-size: 1rem;
-      line-height: 1.4;
-    }
-    
-    .sync-description strong {
-      font-weight: 600;
-    }
-    
-    .efficiency-display {
-      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
-    }
-    
-    .sync-item {
-      padding: 8px 12px;
-      margin: 4px 0;
-      border-radius: 6px;
-      background: #f8f9fa;
-      border-left: 4px solid #6c757d;
-      font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
-      font-size: 0.9rem;
-    }
-    
-    .sync-item.info {
-      border-left-color: #007bff;
-      background: #e3f2fd;
-    }
-    
-    .sync-item.success {
-      border-left-color: #28a745;
-      background: #e8f5e8;
-    }
-    
-    .sync-item.added {
-      border-left-color: #28a745;
-      background: #e8f5e8;
-    }
-    
-    .sync-item.updated {
-      border-left-color: #ffc107;
-      background: #fff3cd;
-    }
-    
-    .sync-item.skipped {
-      border-left-color: #6c757d;
-      background: #f8f9fa;
-    }
-    
-    .sync-item.deleted {
-      border-left-color: #dc3545;
-      background: #f8d7da;
-    }
-    
-    .sync-item.failed {
-      border-left-color: #dc3545;
-      background: #f8d7da;
-    }
-    
-    .sync-item.complete {
-      border-left-color: #28a745;
-      background: #d4edda;
-      font-weight: 600;
-    }
-    
-    .sync-item.analysis {
-      border-left-color: #6f42c1;
-      background: #f3e5f5;
-      font-weight: 500;
-    }
-    
-    .live-updates {
-      max-height: 300px;
-      overflow-y: auto;
-      background: white;
-      border: 1px solid #dee2e6;
-      border-radius: 8px;
-      padding: 10px;
-      margin: 15px 0;
-    }
-    
-    .toggle-indicator.processing {
-      background: linear-gradient(45deg, #667eea, #764ba2);
-      animation: pulse 2s ease-in-out infinite;
-    }
-    
-    @keyframes pulse {
-      0% { opacity: 1; }
-      50% { opacity: 0.7; }
-      100% { opacity: 1; }
-    }
-  </style>
-
+  
+  <!-- Loading Overlay -->
+  <div id="loading-overlay" class="loading-overlay d-none" aria-hidden="true">
+    <div class="loading-spinner-large"></div>
+  </div>
+  
+  <!-- JavaScript -->
+  <script src="/public/scripts/utils.js"></script>
+  <script src="/public/scripts/prevention.js"></script>
+  <script src="/public/scripts/sync.js"></script>
+  
   <script>
-    const mode = '{{mode}}';
-    const password = '{{password}}';
-    
-    let evtSource = null;
-    let syncInProgress = false;
-    let totalOperations = 0;
-    let totalItems = 0;
-    
-    // Elements
-    const startBtn = document.getElementById('start-sync-btn');
-    const cancelBtn = document.getElementById('cancel-sync-btn');
-    const syncControls = document.getElementById('sync-controls');
-    const syncProgress = document.getElementById('sync-progress');
-    const statusIndicator = document.getElementById('status-indicator');
-    const efficiencyPercentage = document.getElementById('efficiency-percentage');
-    const operationsCount = document.getElementById('operations-count');
-    const syncStatus = document.getElementById('sync-status');
-    
-    // Auto-scroll to bottom as updates come in
-    function scrollToBottom() {
-      window.scrollTo(0, document.body.scrollHeight);
-    }
-    
-    // Update the counters
-    function updateCounter(type, value) {
-      const element = document.getElementById(type + '-count');
-      if (element) {
-        element.textContent = value;
-      }
-    }
-    
-    // Update efficiency display
-    function updateEfficiency(operations, total) {
-      if (total > 0) {
-        const efficiency = Math.round((operations / total) * 100);
-        efficiencyPercentage.textContent = `${efficiency}% (vs 100% old system)`;
-        operationsCount.textContent = `${operations} of ${total} items need processing`;
-        
-        if (efficiency <= 10) {
-          syncStatus.textContent = '🎯 Maximum Efficiency Achieved!';
-        } else if (efficiency <= 30) {
-          syncStatus.textContent = '⚡ High Efficiency Mode';
-        } else {
-          syncStatus.textContent = '🧠 Smart Diff Processing';
-        }
-      }
-    }
-    
-    // Add a sync message to the updates list
-    function addSyncMessage(message, type = '') {
-      const updatesDiv = document.getElementById('updates');
-      const messageDiv = document.createElement('div');
-      messageDiv.className = `sync-item ${type || ''}`;
-      messageDiv.textContent = message;
-      updatesDiv.appendChild(messageDiv);
+    // Initialize sync page with enhanced prevention
+    document.addEventListener('DOMContentLoaded', function() {
+      const password = '{{password}}';
+      const mode = '{{mode}}';
       
-      // Keep only last 50 messages to prevent memory issues
-      while (updatesDiv.children.length > 50) {
-        updatesDiv.removeChild(updatesDiv.firstChild);
-      }
-      
-      scrollToBottom();
-    }
-    
-    // Start the sync process
-    function startSync() {
-      if (syncInProgress) return;
-      
-      syncInProgress = true;
-      
-      // Update UI
-      syncControls.style.display = 'none';
-      syncProgress.style.display = 'block';
-      statusIndicator.className = 'toggle-indicator processing';
-      
-      // Clear previous messages
-      document.getElementById('updates').innerHTML = '<div class="sync-item info">🔗 Connecting to Smart Diff Sync...</div>';
-      
-      // Reset efficiency display
-      efficiencyPercentage.textContent = 'Analyzing...';
-      operationsCount.textContent = 'Fetching data...';
-      syncStatus.textContent = '🧠 Smart Diff Technology Active';
-      
-      // Start EventSource connection
-      evtSource = new EventSource(`/sync-stream?password=${encodeURIComponent(password)}&mode=${mode}`);
-      
-      evtSource.onmessage = function(event) {
-        try {
-          const data = JSON.parse(event.data);
-          
-          // Add the update message
-          if (data.message) {
-            addSyncMessage(data.message, data.type || '');
-            
-            // Update efficiency display based on message content
-            if (data.message.includes('Smart Diff complete:')) {
-              // Extract numbers from message like "5 to add, 3 to update, 1200 to skip"
-              const addMatch = data.message.match(/(\d+) to add/);
-              const updateMatch = data.message.match(/(\d+) to update/);
-              const skipMatch = data.message.match(/(\d+) to skip/);
-              
-              if (addMatch && updateMatch && skipMatch) {
-                const toAdd = parseInt(addMatch[1]);
-                const toUpdate = parseInt(updateMatch[1]);
-                const toSkip = parseInt(skipMatch[1]);
-                
-                totalOperations = toAdd + toUpdate;
-                totalItems = totalOperations + toSkip;
-                updateEfficiency(totalOperations, totalItems);
-              }
-            }
-          }
-          
-          // Update counters if needed
-          if (data.counts) {
-            updateCounter('added', data.counts.added || 0);
-            updateCounter('updated', data.counts.updated || 0);
-            updateCounter('skipped', data.counts.skipped || 0);
-            updateCounter('deleted', data.counts.deleted || 0);
-          }
-          
-          // Update efficiency if provided
-          if (data.efficiency) {
-            updateEfficiency(data.efficiency.itemsProcessed, data.efficiency.totalItems);
-          }
-          
-          // If complete, show completion state
-          if (data.complete) {
-            evtSource.close();
-            evtSource = null;
-            syncInProgress = false;
-            
-            // Update UI to show completion
-            statusIndicator.className = 'toggle-indicator synced';
-            syncStatus.textContent = '✅ Smart Diff Sync Complete!';
-            cancelBtn.textContent = 'Return to Dashboard';
-            cancelBtn.style.background = '#28a745';
-            cancelBtn.onclick = () => window.location.href = `/?password=${encodeURIComponent(password)}`;
-            
-            // Show final efficiency if available
-            if (data.efficiency) {
-              const finalEfficiency = data.efficiency.percentage;
-              const duration = data.efficiency.duration;
-              addSyncMessage(`🎉 Final Results: ${finalEfficiency}% efficiency, completed in ${duration}s`, 'complete');
-            }
-          }
-        } catch (error) {
-          console.error('Error processing message:', error);
-          addSyncMessage('Error processing sync message', 'failed');
-        }
-      };
-      
-      evtSource.onerror = function(error) {
-        console.error('EventSource error:', error);
-        
-        if (evtSource && evtSource.readyState === EventSource.CLOSED) {
-          addSyncMessage('Connection lost. Sync may still be running in the background.', 'failed');
-          
-          // Allow user to return to dashboard
-          cancelBtn.textContent = 'Return to Dashboard';
-          cancelBtn.style.background = '#f39c12';
-          cancelBtn.onclick = () => window.location.href = `/?password=${encodeURIComponent(password)}`;
-        }
-      };
-    }
-    
-    // Cancel the sync process
-    function cancelSync() {
-      if (evtSource) {
-        evtSource.close();
-        evtSource = null;
-      }
-      
-      syncInProgress = false;
-      
-      // Return to dashboard
-      window.location.href = `/?password=${encodeURIComponent(password)}`;
-    }
-    
-    // Event listeners
-    startBtn.addEventListener('click', startSync);
-    cancelBtn.addEventListener('click', cancelSync);
-    
-    // Add touchstart event listeners for mobile devices
-    document.querySelectorAll('a, button').forEach(element => {
-      element.addEventListener('touchstart', function() {
-        this.classList.add('touched');
-      });
-      element.addEventListener('touchend', function() {
-        this.classList.remove('touched');
-      });
-    });
-    
-    // Prevent accidental navigation during sync
-    window.addEventListener('beforeunload', function(e) {
-      if (syncInProgress) {
-        e.preventDefault();
-        e.returnValue = 'Smart Diff Sync is in progress. Are you sure you want to leave?';
-        return e.returnValue;
+      if (window.SyncPage) {
+        window.SyncPage.init(password, mode);
       }
     });
-    
-    // Add some helpful info on page load
-    console.log('Smart Diff Sync Page Loaded');
-    console.log(`Mode: ${mode}`);
-    console.log('🧠 Smart Diff Technology: Processes only differences, not all items');
-    console.log('⚡ Expected performance: 10x faster than old chunked system');
   </script>
 </body>
 </html>

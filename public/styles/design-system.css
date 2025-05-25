@@ -1,0 +1,255 @@
+/* Design System - Extracted from Figma Design */
+/* File: public/styles/design-system.css */
+
+/* Typography */
+@font-face {
+  font-family: 'Helvetica Neue';
+  src: url('../fonts/helvetica-neue.woff2') format('woff2'),
+       url('../fonts/helvetica-neue.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* CSS Custom Properties */
+:root {
+  /* Typography */
+  --font-primary: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-size-huge: 72px;
+  --font-size-large: 48px;
+  --font-size-medium: 24px;
+  --font-size-small: 16px;
+  --letter-spacing-tight: -0.05em;
+  --line-height-tight: 1.1;
+  --line-height-normal: 1.5;
+
+  /* Colors - Synced State */
+  --color-synced-primary: #17d827;
+  --color-synced-text: #17d827;
+  --color-synced-bg: #17d827;
+  
+  /* Colors - Not Synced State */
+  --color-not-synced-primary: #ff0000;
+  --color-not-synced-text: #ff0000;
+  --color-not-synced-bg: #ff0000;
+  
+  /* Colors - Base */
+  --color-text-primary: #000000;
+  --color-text-secondary: #e1e1e1;
+  --color-text-on-color: #ffffff;
+  --color-background: #ffffff;
+  --color-line: #000000;
+  
+  /* Spacing */
+  --spacing-xs: 8px;
+  --spacing-sm: 16px;
+  --spacing-md: 24px;
+  --spacing-lg: 48px;
+  --spacing-xl: 72px;
+  
+  /* Layout */
+  --container-max-width: 1200px;
+  --container-padding: 24px;
+  --container-padding-mobile: 16px;
+  
+  /* Animations */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s ease;
+  --transition-slow: 0.5s ease;
+}
+
+/* CSS Reset */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Base Styles */
+body {
+  font-family: var(--font-primary);
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  background-color: var(--color-background);
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Typography Scale */
+.text-huge {
+  font-family: var(--font-primary);
+  font-size: var(--font-size-huge);
+  font-weight: normal;
+  letter-spacing: var(--letter-spacing-tight);
+  line-height: var(--line-height-tight);
+}
+
+.text-large {
+  font-family: var(--font-primary);
+  font-size: var(--font-size-large);
+  font-weight: normal;
+  letter-spacing: var(--letter-spacing-tight);
+  line-height: var(--line-height-tight);
+}
+
+.text-medium {
+  font-family: var(--font-primary);
+  font-size: var(--font-size-medium);
+  font-weight: normal;
+  line-height: var(--line-height-normal);
+}
+
+.text-small {
+  font-family: var(--font-primary);
+  font-size: var(--font-size-small);
+  font-weight: normal;
+  line-height: var(--line-height-normal);
+}
+
+/* Color Utilities */
+.text-primary {
+  color: var(--color-text-primary);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-on-color {
+  color: var(--color-text-on-color);
+}
+
+.text-synced {
+  color: var(--color-synced-text);
+}
+
+.text-not-synced {
+  color: var(--color-not-synced-text);
+}
+
+/* Background Utilities */
+.bg-synced {
+  background-color: var(--color-synced-bg);
+}
+
+.bg-not-synced {
+  background-color: var(--color-not-synced-bg);
+}
+
+.bg-primary {
+  background-color: var(--color-background);
+}
+
+/* Layout Utilities */
+.container {
+  width: 100%;
+  max-width: var(--container-max-width);
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.stack > * + * {
+  margin-top: var(--spacing-md);
+}
+
+.stack-tight > * + * {
+  margin-top: var(--spacing-sm);
+}
+
+.stack-loose > * + * {
+  margin-top: var(--spacing-lg);
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 1440px) {
+  .container {
+    padding: 0 var(--container-padding);
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --font-size-huge: 48px;
+    --font-size-large: 32px;
+    --font-size-medium: 20px;
+  }
+  
+  .container {
+    padding: 0 var(--container-padding-mobile);
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --font-size-huge: 36px;
+    --font-size-large: 24px;
+    --font-size-medium: 18px;
+  }
+}
+
+/* Interactive Elements Base */
+button,
+.button {
+  font-family: var(--font-primary);
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  transition: opacity var(--transition-fast);
+}
+
+button:hover,
+.button:hover {
+  opacity: 0.8;
+}
+
+button:disabled,
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+  transition: opacity var(--transition-fast);
+}
+
+a:hover {
+  opacity: 0.8;
+}
+
+/* Focus Styles for Accessibility */
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 2px;
+}
+
+/* Image Optimization */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Print Styles */
+@media print {
+  * {
+    background: transparent !important;
+    color: black !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+}

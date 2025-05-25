@@ -1,0 +1,382 @@
+/* Sync Page Styles */
+/* File: public/styles/sync.css */
+
+/* Sync Container */
+.sync-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: var(--spacing-xl) 0;
+}
+
+/* Sync Header */
+.sync-header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.sync-title {
+  margin-bottom: var(--spacing-md);
+}
+
+.sync-description {
+  font-size: var(--font-size-medium);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+  margin-bottom: var(--spacing-lg);
+}
+
+/* Sync Controls */
+.sync-controls {
+  margin-bottom: var(--spacing-xl);
+}
+
+.sync-button {
+  font-size: var(--font-size-huge);
+  font-family: var(--font-primary);
+  letter-spacing: var(--letter-spacing-tight);
+  line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+  background: none;
+  border: none;
+  padding: var(--spacing-sm) 0;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  margin-bottom: var(--spacing-md);
+}
+
+.sync-button:hover:not(:disabled) {
+  opacity: 0.7;
+  transform: translateX(4px);
+}
+
+.sync-button:active {
+  transform: translateX(2px);
+}
+
+.sync-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.sync-button.running {
+  color: var(--color-synced-text);
+  cursor: not-allowed;
+}
+
+.back-button {
+  font-size: var(--font-size-large);
+  font-family: var(--font-primary);
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  padding: var(--spacing-sm) 0;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.back-button:hover {
+  opacity: 0.7;
+  transform: translateX(-4px);
+}
+
+/* Sync Progress */
+.sync-progress {
+  width: 100%;
+  margin-top: var(--spacing-lg);
+}
+
+.sync-progress.hidden {
+  display: none;
+}
+
+/* Progress Stats */
+.sync-stats {
+  font-size: var(--font-size-medium);
+  margin-bottom: var(--spacing-lg);
+  display: flex;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.sync-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.sync-stat-number {
+  font-weight: 600;
+  font-size: var(--font-size-large);
+}
+
+.sync-stat.added .sync-stat-number {
+  color: var(--color-synced-text);
+}
+
+.sync-stat.updated .sync-stat-number {
+  color: #ffa500; /* Orange for updates */
+}
+
+.sync-stat.skipped .sync-stat-number {
+  color: var(--color-text-secondary);
+}
+
+.sync-stat.deleted .sync-stat-number {
+  color: var(--color-not-synced-text);
+}
+
+.sync-stat.failed .sync-stat-number {
+  color: var(--color-not-synced-text);
+}
+
+/* Efficiency Display */
+.efficiency-display {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: var(--spacing-md);
+  border-radius: 8px;
+  margin-bottom: var(--spacing-lg);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.efficiency-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+  font-weight: 600;
+}
+
+.efficiency-percentage {
+  font-size: var(--font-size-medium);
+  font-weight: bold;
+}
+
+.efficiency-details {
+  margin-bottom: var(--spacing-sm);
+  font-size: var(--font-size-small);
+}
+
+.efficiency-status {
+  font-size: var(--font-size-small);
+  opacity: 0.9;
+}
+
+/* Live Updates */
+.live-updates {
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.sync-update {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+  font-size: 14px;
+  line-height: 1.4;
+  border-left: 4px solid #6c757d;
+  background: #f8f9fa;
+}
+
+.sync-update:last-child {
+  margin-bottom: 0;
+}
+
+/* Update Type Styles */
+.sync-update.info {
+  border-left-color: #007bff;
+  background: #e3f2fd;
+}
+
+.sync-update.success,
+.sync-update.added {
+  border-left-color: var(--color-synced-primary);
+  background: #e8f5e8;
+}
+
+.sync-update.updated {
+  border-left-color: #ffa500;
+  background: #fff3cd;
+}
+
+.sync-update.skipped {
+  border-left-color: #6c757d;
+  background: #f8f9fa;
+}
+
+.sync-update.deleted {
+  border-left-color: var(--color-not-synced-primary);
+  background: #f8d7da;
+}
+
+.sync-update.failed {
+  border-left-color: var(--color-not-synced-primary);
+  background: #f8d7da;
+}
+
+.sync-update.complete {
+  border-left-color: var(--color-synced-primary);
+  background: #d4edda;
+  font-weight: 600;
+}
+
+.sync-update.analysis {
+  border-left-color: #6f42c1;
+  background: #f3e5f5;
+  font-weight: 500;
+}
+
+/* Cancel Button */
+.cancel-button {
+  font-size: var(--font-size-large);
+  color: white;
+  background: #e74c3c;
+  border: none;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.cancel-button:hover {
+  background: #c0392b;
+  transform: translateY(-1px);
+}
+
+.cancel-button.complete {
+  background: var(--color-synced-bg);
+}
+
+.cancel-button.complete:hover {
+  background: #14a025;
+}
+
+/* Status Indicators */
+.sync-status-indicator {
+  width: 100px;
+  height: 20px;
+  margin-bottom: var(--spacing-lg);
+  transition: all var(--transition-normal);
+  border-radius: 2px;
+}
+
+.sync-status-indicator.not-synced {
+  background-color: var(--color-not-synced-bg);
+}
+
+.sync-status-indicator.processing {
+  background: linear-gradient(45deg, #667eea, #764ba2);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.sync-status-indicator.synced {
+  background-color: var(--color-synced-bg);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Connection Status */
+.connection-status {
+  font-size: var(--font-size-small);
+  margin-bottom: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: 4px;
+}
+
+.connection-status.connecting {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.connection-status.connected {
+  background: #d4edda;
+  color: #155724;
+}
+
+.connection-status.error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .sync-page {
+    padding: var(--spacing-lg) 0;
+  }
+  
+  .sync-stats {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+  
+  .efficiency-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+  }
+  
+  .live-updates {
+    max-height: 300px;
+  }
+}
+
+@media (max-width: 480px) {
+  .sync-button:hover:not(:disabled),
+  .back-button:hover {
+    transform: none;
+  }
+  
+  .cancel-button:hover {
+    transform: none;
+  }
+  
+  .sync-update {
+    font-size: 12px;
+    padding: var(--spacing-xs);
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .efficiency-display {
+    background: var(--color-text-primary);
+    border: 2px solid var(--color-text-primary);
+  }
+  
+  .live-updates {
+    border: 2px solid var(--color-text-primary);
+  }
+  
+  .sync-update {
+    border-left-width: 6px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .sync-button,
+  .back-button,
+  .cancel-button,
+  .sync-status-indicator {
+    animation: none;
+    transition: none;
+  }
+  
+  .sync-button:hover:not(:disabled),
+  .back-button:hover,
+  .cancel-button:hover {
+    transform: none;
+  }
+}
