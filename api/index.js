@@ -130,7 +130,7 @@ app.get('/api/counts', { preHandler: requirePassword }, async (request, reply) =
   }
 });
 
-// Sync page route - SECURED
+// Sync page route - SECURED (for incremental sync)
 app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
   const mode = request.query.mode || 'new';
   return reply.view('sync.hbs', { 
@@ -139,16 +139,16 @@ app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
   });
 });
 
-// Chunked sync page route - SECURED
-app.get('/sync-chunked-page', { preHandler: requirePassword }, async (request, reply) => {
-  const mode = request.query.mode || 'all';
+// Sync All page route - SECURED (for full reconciliation)
+app.get('/sync-all', { preHandler: requirePassword }, async (request, reply) => {
+  const mode = 'all'; // Always full sync for sync-all
   return reply.view('sync-chunked.hbs', { 
     mode,
     password: request.query.password
   });
 });
 
-// CHUNKED SYNC API ROUTE - Processes large datasets in small chunks
+// CHUNKED SYNC API ROUTE - Used by /sync-all for full reconciliation
 app.get('/sync-chunked', { preHandler: requirePassword }, (request, reply) => {
   const mode = request.query.mode || 'new';
   const chunkSize = parseInt(request.query.chunkSize || '100', 10);
@@ -379,7 +379,7 @@ async function performChunkedSync(mode, chunkSize, startOffset, streamId, reply)
   }
 }
 
-// SSE route for streaming sync updates - SECURED WITH ANTI-RESTART PROTECTION
+// SSE route for streaming sync updates - SECURED (for incremental sync)
 app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   const mode = request.query.mode || 'new';
   const isFullSync = mode === 'all';
@@ -527,7 +527,7 @@ app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   });
 });
 
-// ULTRA-LOCKED VERSION of performSync (for the regular sync)
+// ULTRA-LOCKED VERSION of performSync (for incremental sync)
 async function performSyncUltraLocked(mode, limit) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
   console.log(`🔄 performSyncUltraLocked starting - Lock ID: ${lockId}, mode: ${mode}, limit: ${limit}`);
@@ -1022,150 +1022,6 @@ app.get('/test-sync-lock', { preHandler: requirePassword }, async (request, repl
     message: 'Use ?action=set or ?action=clear', 
     currentLock: GLOBAL_SYNC_LOCK,
     lockId: SYNC_LOCK_ID 
-  });
-});
-
-// Minimal Sync Stream Route - SECURED (for testing)
-app.get('/sync-stream-minimal', { preHandler: requirePassword }, (request, reply) => {
-  const mode = request.query.mode || 'new';
-  const streamId = Date.now().toString();
-  
-  console.log(`🔍 MINIMAL SYNC REQUEST: mode=${mode}, streamId=${streamId}`);
-  console.log(`🔍 Current state: currentSync exists=${!!currentSync}, GLOBAL_SYNC_LOCK=${GLOBAL_SYNC_LOCK}`);
-  
-  // Set headers for SSE
-  reply.raw.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
-  });
-  
-  // HARD BLOCK: If any sync exists, refuse
-  if (currentSync || GLOBAL_SYNC_LOCK) {
-    console.log(`🚫 BLOCKING SYNC REQUEST - currentSync: ${!!currentSync}, GLOBAL_SYNC_LOCK: ${GLOBAL_SYNC_LOCK}`);
-    
-    reply.raw.write(`data: ${JSON.stringify({
-      message: `❌ SYNC BLOCKED: Another sync is active. Please wait and try again later.`,
-      type: 'blocked',
-      complete: true,
-      debug: {
-        currentSyncExists: !!currentSync,
-        globalLock: GLOBAL_SYNC_LOCK,
-        streamId: streamId
-      }
-    })}\n\n`);
-    
-    setTimeout(() => {
-      try {
-        reply.raw.end();
-      } catch (e) {
-        console.error('Error ending blocked response:', e);
-      }
-    }, 1000);
-    
-    return;
-  }
-  
-  // IMMEDIATE response without starting sync
-  reply.raw.write(`data: ${JSON.stringify({
-    message: `✅ Sync request accepted for mode: ${mode}. Starting in 5 seconds...`,
-    type: 'preparing',
-    streamId: streamId
-  })}\n\n`);
-  
-  // Wait 5 seconds, then check again before starting
-  setTimeout(() => {
-    if (currentSync || GLOBAL_SYNC_LOCK) {
-      console.log(`🚫 LATE BLOCK - Another sync started during preparation`);
-      
-      reply.raw.write(`data: ${JSON.stringify({
-        message: `❌ Another sync started during preparation. Request cancelled.`,
-        type: 'blocked',
-        complete: true
-      })}\n\n`);
-      
-      try {
-        reply.raw.end();
-      } catch (e) {
-        console.error('Error ending late blocked response:', e);
-      }
-      
-      return;
-    }
-    
-    // Set locks IMMEDIATELY
-    GLOBAL_SYNC_LOCK = true;
-    SYNC_START_TIME = Date.now();
-    SYNC_LOCK_ID = `minimal_${streamId}`;
-    
-    console.log(`🔐 SETTING LOCKS - SYNC_LOCK_ID: ${SYNC_LOCK_ID}`);
-    
-    // NOW start the sync
-    reply.raw.write(`data: ${JSON.stringify({
-      message: `🚀 Starting ${mode} sync now (Lock ID: ${SYNC_LOCK_ID})...`,
-      type: 'starting',
-      lockId: SYNC_LOCK_ID
-    })}\n\n`);
-    
-    // Set currentSync IMMEDIATELY
-    currentSync = {
-      mode,
-      isRunning: true,
-      lockId: SYNC_LOCK_ID,
-      startTime: Date.now(),
-      counts: { added: 0, updated: 0, skipped: 0 },
-      currentBatch: 0,
-      totalBatches: 0,
-      completed: false
-    };
-    
-    // Start actual sync using the ultra-locked version
-    performSyncUltraLocked(mode, 0)
-      .then(() => {
-        console.log(`✅ Minimal sync completed - Lock ID: ${SYNC_LOCK_ID}`);
-        
-        reply.raw.write(`data: ${JSON.stringify({
-          message: `✅ Sync completed successfully!`,
-          type: 'completed',
-          complete: true,
-          lockId: SYNC_LOCK_ID
-        })}\n\n`);
-      })
-      .catch(error => {
-        console.error(`❌ Minimal sync failed - Lock ID: ${SYNC_LOCK_ID}:`, error);
-        
-        reply.raw.write(`data: ${JSON.stringify({
-          message: `❌ Sync failed: ${error.message}`,
-          type: 'failed',
-          complete: true,
-          lockId: SYNC_LOCK_ID
-        })}\n\n`);
-      })
-      .finally(() => {
-        // Release locks
-        console.log(`🔓 RELEASING LOCKS - Lock ID: ${SYNC_LOCK_ID}`);
-        GLOBAL_SYNC_LOCK = false;
-        SYNC_START_TIME = null;
-        SYNC_LOCK_ID = null;
-        
-        if (currentSync) {
-          currentSync.isRunning = false;
-          currentSync = null;
-        }
-        
-        // Close the connection
-        try {
-          reply.raw.end();
-        } catch (e) {
-          console.error('Error ending response:', e);
-        }
-      });
-    
-  }, 5000);
-  
-  // Handle disconnect
-  request.raw.on('close', () => {
-    console.log(`📡 Minimal sync client ${streamId} disconnected`);
   });
 });
 
