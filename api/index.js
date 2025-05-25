@@ -1,13 +1,14 @@
 // Vercel native function - no Fastify dependencies
 
-// Try to load services
+// Try to load services with better error handling
 let getRaindrops, getNotionPages, createNotionPage, updateNotionPage, deleteNotionPage;
 
 try {
   const raindropService = require('./services/raindrop');
   const notionService = require('./services/notion');
   
-  getRaindrops = raindropService.getRaindrops;
+  // Use the correct function names from your service files
+  getRaindrops = raindropService.getAllRaindrops;
   getNotionPages = notionService.getNotionPages;
   createNotionPage = notionService.createNotionPage;
   updateNotionPage = notionService.updateNotionPage;
@@ -16,11 +17,11 @@ try {
   console.log('✅ Services loaded');
 } catch (error) {
   console.error('❌ Service error:', error.message);
-  getRaindrops = async () => [];
-  getNotionPages = async () => [];
-  createNotionPage = async () => {};
-  updateNotionPage = async () => {};
-  deleteNotionPage = async () => {};
+  getRaindrops = async () => { throw new Error('Raindrop service not loaded'); };
+  getNotionPages = async () => { throw new Error('Notion service not loaded'); };
+  createNotionPage = async () => { throw new Error('Notion service not loaded'); };
+  updateNotionPage = async () => { throw new Error('Notion service not loaded'); };
+  deleteNotionPage = async () => { throw new Error('Notion service not loaded'); };
 }
 
 // Password check function
@@ -204,7 +205,75 @@ module.exports = async (req, res) => {
     return;
   }
   
-  if (pathname === '/sync-stream') {
+  if (pathname === '/test-raindrop') {
+    try {
+      console.log('Testing Raindrop service...');
+      const raindrops = await getRaindrops();
+      res.json({
+        success: true,
+        count: raindrops.length,
+        sample: raindrops.slice(0, 3).map(r => ({ title: r.title, link: r.link })),
+        hasApiKey: !!process.env.RAINDROP_TOKEN,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Raindrop test failed:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        stack: error.stack,
+        hasApiKey: !!process.env.RAINDROP_TOKEN
+      });
+    }
+    return;
+  }
+  
+  if (pathname === '/test-notion') {
+    try {
+      console.log('Testing Notion service...');
+      const notionPages = await getNotionPages();
+      res.json({
+        success: true,
+        count: notionPages.length,
+        sample: notionPages.slice(0, 3).map(p => ({ 
+          title: p.properties?.Name?.title?.[0]?.text?.content,
+          url: p.properties?.URL?.url 
+        })),
+        hasApiKey: !!process.env.NOTION_TOKEN,
+        hasDatabaseId: !!process.env.NOTION_DATABASE_ID,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Notion test failed:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+        stack: error.stack,
+        hasApiKey: !!process.env.NOTION_TOKEN,
+        hasDatabaseId: !!process.env.NOTION_DATABASE_ID
+      });
+    }
+    return;
+  }
+  
+  if (pathname === '/debug-env') {
+    res.json({
+      hasAdminPassword: !!process.env.ADMIN_PASSWORD,
+      hasRaindropToken: !!process.env.RAINDROP_TOKEN,
+      hasNotionToken: !!process.env.NOTION_TOKEN,
+      hasNotionDatabase: !!process.env.NOTION_DB_ID,
+      // Check alternative names too
+      hasNotionDatabaseId: !!process.env.NOTION_DATABASE_ID,
+      allEnvVars: Object.keys(process.env).filter(key => 
+        key.includes('NOTION') || 
+        key.includes('RAINDROP') || 
+        key.includes('ADMIN')
+      ),
+      nodeVersion: process.version,
+      timestamp: new Date().toISOString()
+    });
+    return;
+  }
     // SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
