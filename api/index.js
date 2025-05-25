@@ -1,7 +1,6 @@
-const fastify = require('fastify')({ logger: true });
-const path = require('path');
+// Vercel native function - no Fastify dependencies
 
-// Try to require services
+// Try to load services
 let getRaindrops, getNotionPages, createNotionPage, updateNotionPage, deleteNotionPage;
 
 try {
@@ -14,10 +13,9 @@ try {
   updateNotionPage = notionService.updateNotionPage;
   deleteNotionPage = notionService.deleteNotionPage;
   
-  console.log('✅ Services loaded successfully');
+  console.log('✅ Services loaded');
 } catch (error) {
-  console.error('❌ Error loading services:', error.message);
-  // Provide dummy functions for testing
+  console.error('❌ Service error:', error.message);
   getRaindrops = async () => [];
   getNotionPages = async () => [];
   createNotionPage = async () => {};
@@ -25,125 +23,53 @@ try {
   deleteNotionPage = async () => {};
 }
 
-// Register view engine for Handlebars
-try {
-  fastify.register(require('@fastify/view'), {
-    engine: {
-      handlebars: require('handlebars')
-    },
-    root: path.join(__dirname, '..', 'src', 'pages'),
-    layout: false,
-    options: {
-      helpers: {
-        eq: function(a, b) {
-          return a === b;
-        }
-      }
-    }
-  });
-  console.log('✅ View engine registered');
-} catch (error) {
-  console.error('❌ Error registering view engine:', error.message);
+// Password check function
+function checkPassword(password) {
+  return password && password === process.env.ADMIN_PASSWORD;
 }
 
-// Register static files
-try {
-  fastify.register(require('@fastify/static'), {
-    root: path.join(__dirname, '..', 'public'),
-    prefix: '/public/'
-  });
-  console.log('✅ Static files registered');
-} catch (error) {
-  console.error('❌ Error registering static files:', error.message);
-}
-
-// Password middleware - using ADMIN_PASSWORD
-const requirePassword = async (request, reply) => {
-  const password = request.query.password;
-  if (!password || password !== process.env.ADMIN_PASSWORD) {
-    reply.code(401).send('Unauthorized');
-  }
-};
-
-// Global sync state
-let GLOBAL_SYNC_LOCK = false;
-let SYNC_START_TIME = null;
-let SYNC_LOCK_ID = null;
-let currentSync = null;
-
-// Helper function to send SSE data
-function sendSSEData(reply, data) {
+// Helper to send SSE data
+function writeSSE(res, data) {
   try {
-    reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
   } catch (error) {
-    console.error('Error sending SSE data:', error);
+    console.error('SSE write error:', error);
   }
 }
 
-// Smart Diff Sync Function
-async function performSmartDiffSync(mode = 'all', reply) {
-  const syncId = `sync_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  
+// Smart Diff sync function
+async function performSmartDiffSync(mode, res) {
   try {
-    sendSSEData(reply, { 
-      message: `🔒 Starting Smart Diff sync (${mode})`, 
-      type: 'info',
-      syncId: syncId
-    });
-
-    // Step 1: Fetch all data once (efficient!)
-    sendSSEData(reply, { message: '📡 Fetching raindrops...', type: 'info' });
+    writeSSE(res, { message: `🔒 Starting Smart Diff sync (${mode})`, type: 'info' });
+    
+    // Fetch data
+    writeSSE(res, { message: '📡 Fetching raindrops...', type: 'info' });
     const raindrops = await getRaindrops();
-    const totalRaindrops = raindrops.length;
+    writeSSE(res, { message: `✅ Found ${raindrops.length} raindrops`, type: 'success' });
     
-    sendSSEData(reply, { 
-      message: `✅ Found ${totalRaindrops} raindrops`, 
-      type: 'success',
-      progress: 25
-    });
-
-    sendSSEData(reply, { message: '📄 Fetching Notion pages...', type: 'info' });
+    writeSSE(res, { message: '📄 Fetching Notion pages...', type: 'info' });
     const notionPages = await getNotionPages();
-    const totalNotion = notionPages.length;
+    writeSSE(res, { message: `✅ Found ${notionPages.length} notion pages`, type: 'success' });
     
-    sendSSEData(reply, { 
-      message: `✅ Found ${totalNotion} Notion pages`, 
-      type: 'success',
-      progress: 50
-    });
-
-    // Step 2: Build lookup maps for O(1) comparison
-    sendSSEData(reply, { message: '🗺️ Building lookup maps...', type: 'info' });
-    
+    // Build lookup maps
     const notionLookupByUrl = new Map();
     const notionLookupByTitle = new Map();
     
     notionPages.forEach(page => {
       const url = page.properties?.URL?.url;
       const title = page.properties?.Name?.title?.[0]?.text?.content;
-      
       if (url) notionLookupByUrl.set(url, page);
       if (title) notionLookupByTitle.set(title, page);
     });
-
-    sendSSEData(reply, { 
-      message: '✅ Lookup maps created', 
-      type: 'success',
-      progress: 60
-    });
-
-    // Step 3: Smart Diff Analysis - Pre-identify all differences
-    sendSSEData(reply, { message: '🔍 Performing Smart Diff analysis...', type: 'info' });
     
+    writeSSE(res, { message: '🗺️ Lookup maps created', type: 'success' });
+    
+    // Smart Diff analysis
     const toAdd = [];
     const toUpdate = [];
     const toSkip = [];
-    let processed = 0;
-
-    // Analyze each raindrop
+    
     for (const raindrop of raindrops) {
-      processed++;
-      
       // Filter based on mode
       if (mode === 'new') {
         const createdDate = new Date(raindrop.created);
@@ -154,420 +80,279 @@ async function performSmartDiffSync(mode = 'all', reply) {
         }
       }
 
-      const existingPageByUrl = notionLookupByUrl.get(raindrop.link);
-      const existingPageByTitle = notionLookupByTitle.get(raindrop.title);
-      const existingPage = existingPageByUrl || existingPageByTitle;
+      const existingPage = notionLookupByUrl.get(raindrop.link) || notionLookupByTitle.get(raindrop.title);
 
       if (!existingPage) {
-        // New item to add
         toAdd.push(raindrop);
       } else {
-        // Check if update needed
         const notionTitle = existingPage.properties?.Name?.title?.[0]?.text?.content || '';
         const notionUrl = existingPage.properties?.URL?.url || '';
-        const notionTags = existingPage.properties?.Tags?.multi_select?.map(tag => tag.name) || [];
-        const raindropTags = raindrop.tags || [];
-
-        const needsUpdate = 
-          notionTitle !== raindrop.title ||
-          notionUrl !== raindrop.link ||
-          JSON.stringify(notionTags.sort()) !== JSON.stringify(raindropTags.sort());
-
-        if (needsUpdate) {
+        
+        if (notionTitle !== raindrop.title || notionUrl !== raindrop.link) {
           toUpdate.push({ raindrop, existingPage });
         } else {
           toSkip.push(raindrop);
         }
       }
-
-      // Progress update every 100 items
-      if (processed % 100 === 0) {
-        const progress = 60 + (processed / totalRaindrops) * 20;
-        sendSSEData(reply, { 
-          message: `🔍 Analyzed ${processed}/${totalRaindrops} items...`, 
-          type: 'info',
-          progress: Math.round(progress)
-        });
-      }
     }
-
-    // Handle deletions for full sync
-    const toDelete = [];
-    if (mode === 'all') {
-      const raindropUrls = new Set(raindrops.map(r => r.link));
-      const raindropTitles = new Set(raindrops.map(r => r.title));
-      
-      for (const page of notionPages) {
-        const url = page.properties?.URL?.url;
-        const title = page.properties?.Name?.title?.[0]?.text?.content;
-        
-        if (url && !raindropUrls.has(url) && title && !raindropTitles.has(title)) {
-          toDelete.push(page);
-        }
-      }
-    }
-
-    const totalOperations = toAdd.length + toUpdate.length + toDelete.length;
-    const efficiencyPercentage = totalOperations > 0 ? 
-      Math.round(((totalRaindrops - totalOperations) / totalRaindrops) * 100) : 100;
-
-    sendSSEData(reply, { 
-      message: `🔍 Smart Diff complete: ${toAdd.length} to add, ${toUpdate.length} to update, ${toSkip.length} to skip, ${toDelete.length} to delete`, 
-      type: 'success',
-      progress: 80
+    
+    const totalOperations = toAdd.length + toUpdate.length;
+    const efficiency = totalOperations > 0 ? Math.round(((raindrops.length - totalOperations) / raindrops.length) * 100) : 100;
+    
+    writeSSE(res, { 
+      message: `🔍 Smart Diff complete: ${toAdd.length} to add, ${toUpdate.length} to update, ${toSkip.length} to skip`, 
+      type: 'success'
     });
-
-    sendSSEData(reply, { 
-      message: `🚀 Processing ${totalOperations} operations (${efficiencyPercentage}% efficiency vs 100% in old system)`, 
+    
+    writeSSE(res, { 
+      message: `🚀 ${efficiency}% efficiency - processing only ${totalOperations} of ${raindrops.length} items`, 
       type: 'info'
     });
-
-    // Step 4: Process only the differences (not all items!)
-    let completedOperations = 0;
-
-    // Add new items
-    if (toAdd.length > 0) {
-      sendSSEData(reply, { message: `➕ Adding ${toAdd.length} new pages...`, type: 'info' });
-      
-      for (const raindrop of toAdd) {
-        try {
-          await createNotionPage({
-            name: raindrop.title,
-            url: raindrop.link,
-            tags: raindrop.tags || [],
-            created: raindrop.created,
-            excerpt: raindrop.excerpt || ''
-          });
-          
-          completedOperations++;
-          sendSSEData(reply, { 
-            message: `➕ Added: "${raindrop.title}"`, 
-            type: 'success'
-          });
-
-          // Progress update
-          const progress = 80 + (completedOperations / totalOperations) * 20;
-          sendSSEData(reply, { progress: Math.round(progress) });
-          
-        } catch (error) {
-          sendSSEData(reply, { 
-            message: `❌ Failed to add: "${raindrop.title}" - ${error.message}`, 
-            type: 'error'
-          });
-        }
+    
+    // Process additions
+    for (const raindrop of toAdd) {
+      try {
+        await createNotionPage({
+          name: raindrop.title,
+          url: raindrop.link,
+          tags: raindrop.tags || [],
+          created: raindrop.created,
+          excerpt: raindrop.excerpt || ''
+        });
+        writeSSE(res, { message: `➕ Added: "${raindrop.title}"`, type: 'success' });
+      } catch (error) {
+        writeSSE(res, { message: `❌ Failed to add: "${raindrop.title}"`, type: 'error' });
       }
     }
-
-    // Update existing items
-    if (toUpdate.length > 0) {
-      sendSSEData(reply, { message: `🔄 Updating ${toUpdate.length} existing pages...`, type: 'info' });
-      
-      for (const { raindrop, existingPage } of toUpdate) {
-        try {
-          await updateNotionPage(existingPage.id, {
-            name: raindrop.title,
-            url: raindrop.link,
-            tags: raindrop.tags || [],
-            excerpt: raindrop.excerpt || ''
-          });
-          
-          completedOperations++;
-          sendSSEData(reply, { 
-            message: `🔄 Updated: "${raindrop.title}"`, 
-            type: 'success'
-          });
-
-          // Progress update
-          const progress = 80 + (completedOperations / totalOperations) * 20;
-          sendSSEData(reply, { progress: Math.round(progress) });
-          
-        } catch (error) {
-          sendSSEData(reply, { 
-            message: `❌ Failed to update: "${raindrop.title}" - ${error.message}`, 
-            type: 'error'
-          });
-        }
+    
+    // Process updates
+    for (const { raindrop, existingPage } of toUpdate) {
+      try {
+        await updateNotionPage(existingPage.id, {
+          name: raindrop.title,
+          url: raindrop.link,
+          tags: raindrop.tags || [],
+          excerpt: raindrop.excerpt || ''
+        });
+        writeSSE(res, { message: `🔄 Updated: "${raindrop.title}"`, type: 'success' });
+      } catch (error) {
+        writeSSE(res, { message: `❌ Failed to update: "${raindrop.title}"`, type: 'error' });
       }
     }
-
-    // Delete orphaned items (full sync only)
-    if (toDelete.length > 0) {
-      sendSSEData(reply, { message: `🗑️ Removing ${toDelete.length} orphaned pages...`, type: 'info' });
-      
-      for (const page of toDelete) {
-        try {
-          await deleteNotionPage(page.id);
-          
-          completedOperations++;
-          const title = page.properties?.Name?.title?.[0]?.text?.content || 'Unknown';
-          sendSSEData(reply, { 
-            message: `🗑️ Removed: "${title}"`, 
-            type: 'success'
-          });
-
-          // Progress update
-          const progress = 80 + (completedOperations / totalOperations) * 20;
-          sendSSEData(reply, { progress: Math.round(progress) });
-          
-        } catch (error) {
-          const title = page.properties?.Name?.title?.[0]?.text?.content || 'Unknown';
-          sendSSEData(reply, { 
-            message: `❌ Failed to remove: "${title}" - ${error.message}`, 
-            type: 'error'
-          });
-        }
-      }
-    }
-
-    // Completion
-    const endTime = Date.now();
-    const duration = endTime - SYNC_START_TIME;
-    const durationStr = `${Math.round(duration / 1000)}s`;
-
-    sendSSEData(reply, { 
-      message: `✅ Smart Diff sync completed in ${durationStr}! Efficiency: ${efficiencyPercentage}%`, 
+    
+    writeSSE(res, { 
+      message: `✅ Smart Diff sync completed! ${efficiency}% efficiency achieved`, 
       type: 'success',
-      progress: 100,
-      isComplete: true,
-      stats: {
-        added: toAdd.length,
-        updated: toUpdate.length,
-        skipped: toSkip.length,
-        deleted: toDelete.length,
-        duration: durationStr,
-        efficiency: efficiencyPercentage
-      }
+      isComplete: true
     });
-
-    return true;
-
+    
   } catch (error) {
-    console.error('Smart Diff sync error:', error);
-    sendSSEData(reply, { 
-      message: `❌ Sync failed: ${error.message}`, 
-      type: 'error',
-      isComplete: true,
-      hasError: true
-    });
-    throw error;
+    console.error('Sync error:', error);
+    writeSSE(res, { message: `❌ Sync failed: ${error.message}`, type: 'error', isComplete: true });
   }
 }
 
-// Routes
-
-// Main dashboard route
-fastify.get('/', { preHandler: requirePassword }, async (request, reply) => {
-  try {
-    return reply.view('index.hbs', {
-      password: request.query.password
-    });
-  } catch (error) {
-    console.error('Dashboard error:', error);
-    return reply.type('text/html').send(`
-      <!DOCTYPE html>
-      <html>
-      <head><title>Raindrop/Notion Sync</title></head>
-      <body>
-        <h1>Raindrop/Notion Sync</h1>
-        <p>Dashboard temporarily unavailable. Template error: ${error.message}</p>
-        <a href="/sync?password=${request.query.password}">Go to Sync</a>
-      </body>
-      </html>
-    `);
-  }
-});
-
-// Universal sync page
-fastify.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
-  try {
-    return reply.view('sync.hbs', {
-      mode: request.query.mode || 'new',
-      password: request.query.password
-    });
-  } catch (error) {
-    console.error('Sync page error:', error);
-    return reply.type('text/html').send(`
-      <!DOCTYPE html>
-      <html>
-      <head><title>Sync</title></head>
-      <body>
-        <h1>Sync</h1>
-        <p>Sync page temporarily unavailable. Template error: ${error.message}</p>
-        <a href="/?password=${request.query.password}">Back to Dashboard</a>
-      </body>
-      </html>
-    `);
-  }
-});
-
-// Full sync page
-fastify.get('/sync-all', { preHandler: requirePassword }, async (request, reply) => {
-  try {
-    return reply.view('sync.hbs', {
-      mode: 'all',
-      password: request.query.password
-    });
-  } catch (error) {
-    console.error('Sync-all page error:', error);
-    return reply.type('text/html').send(`
-      <!DOCTYPE html>
-      <html>
-      <head><title>Full Sync</title></head>
-      <body>
-        <h1>Full Sync</h1>
-        <p>Sync page temporarily unavailable. Template error: ${error.message}</p>
-        <a href="/?password=${request.query.password}">Back to Dashboard</a>
-      </body>
-      </html>
-    `);
-  }
-});
-
-// SSE route for streaming sync updates
-fastify.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
-  const mode = request.query.mode || 'all';
+// Main export function
+module.exports = async (req, res) => {
+  console.log('Request:', req.method, req.url);
   
-  try {
-    // Set SSE headers
-    reply.raw.setHeader('Content-Type', 'text/event-stream');
-    reply.raw.setHeader('Cache-Control', 'no-cache');
-    reply.raw.setHeader('Connection', 'keep-alive');
-    reply.raw.setHeader('Access-Control-Allow-Origin', '*');
-
-    // Check if another sync is already running
-    if (GLOBAL_SYNC_LOCK) {
-      const elapsedTime = Math.round((Date.now() - SYNC_START_TIME) / 1000);
-      sendSSEData(reply, { 
-        message: `⏸️ Sync already running (${elapsedTime}s elapsed). Please wait...`, 
-        type: 'warning'
-      });
-      return reply;
-    }
-
-    // Set sync lock
-    GLOBAL_SYNC_LOCK = true;
-    SYNC_START_TIME = Date.now();
-    SYNC_LOCK_ID = `sync_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-    // Store current sync info
-    currentSync = {
-      id: SYNC_LOCK_ID,
-      mode: mode,
-      startTime: SYNC_START_TIME,
-      isRunning: true
-    };
-
-    // Handle client disconnect
-    request.raw.on('close', () => {
-      console.log('Client disconnected from sync stream');
-    });
-
-    // Start sync process
-    performSmartDiffSync(mode, reply)
-      .then(() => {
-        console.log('Sync completed successfully');
-      })
-      .catch((error) => {
-        console.error('Sync failed:', error);
-      })
-      .finally(() => {
-        // Clear sync lock
-        GLOBAL_SYNC_LOCK = false;
-        SYNC_START_TIME = null;
-        SYNC_LOCK_ID = null;
-        currentSync = null;
-        
-        // Close connection
-        try {
-          reply.raw.end();
-        } catch (error) {
-          console.error('Error closing SSE connection:', error);
-        }
-      });
-
-  } catch (error) {
-    console.error('SSE route error:', error);
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+  
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const password = url.searchParams.get('password');
+  const mode = url.searchParams.get('mode') || 'all';
+  
+  // Password check
+  if (!checkPassword(password)) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  
+  const pathname = url.pathname;
+  console.log('Route:', pathname);
+  
+  // Routes
+  if (pathname === '/health') {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    return;
+  }
+  
+  if (pathname === '/api/counts') {
     try {
-      reply.code(500).send({ error: 'SSE connection failed' });
-    } catch (replyError) {
-      console.error('Error sending error response:', replyError);
+      const [raindrops, notionPages] = await Promise.all([
+        getRaindrops(),
+        getNotionPages()
+      ]);
+      
+      res.json({
+        raindropTotal: raindrops.length,
+        notionTotal: notionPages.length,
+        isSynced: Math.abs(raindrops.length - notionPages.length) <= 5,
+        lastUpdated: new Date().toISOString()
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
+    return;
   }
-
-  return reply;
-});
-
-// API endpoint for counts
-fastify.get('/api/counts', { preHandler: requirePassword }, async (request, reply) => {
-  try {
-    const [raindrops, notionPages] = await Promise.all([
-      getRaindrops(),
-      getNotionPages()
-    ]);
-
-    const counts = {
-      raindropTotal: raindrops.length,
-      notionTotal: notionPages.length,
-      lastUpdated: new Date().toISOString(),
-      isSynced: Math.abs(raindrops.length - notionPages.length) <= 5
-    };
-
-    reply.send(counts);
-  } catch (error) {
-    console.error('Error fetching counts:', error);
-    reply.code(500).send({ 
-      error: 'Failed to fetch counts',
-      raindropTotal: 0,
-      notionTotal: 0,
-      lastUpdated: new Date().toISOString(),
-      isSynced: false
-    });
-  }
-});
-
-// Health check
-fastify.get('/health', async (request, reply) => {
-  reply.send({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    version: '1.0.0'
-  });
-});
-
-// Lock management
-fastify.get('/test-sync-lock', { preHandler: requirePassword }, async (request, reply) => {
-  const action = request.query.action;
   
-  if (action === 'clear') {
-    GLOBAL_SYNC_LOCK = false;
-    SYNC_START_TIME = null;
-    SYNC_LOCK_ID = null;
-    currentSync = null;
+  if (pathname === '/sync-stream') {
+    // SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
     
-    reply.send({ 
-      message: 'Sync lock cleared',
-      timestamp: new Date().toISOString()
-    });
-  } else {
-    reply.send({
-      locked: GLOBAL_SYNC_LOCK,
-      lockId: SYNC_LOCK_ID,
-      startTime: SYNC_START_TIME,
-      currentSync: currentSync,
-      timestamp: new Date().toISOString()
-    });
+    // Start sync
+    await performSmartDiffSync(mode, res);
+    res.end();
+    return;
   }
-});
-
-// Error handler
-fastify.setErrorHandler((error, request, reply) => {
-  console.error('Fastify error:', error);
   
-  reply.code(error.statusCode || 500).send({
-    error: 'Server Error',
-    message: error.message
-  });
-});
-
-// Export for Vercel
-module.exports = fastify;
+  if (pathname === '/sync' || pathname === '/sync-all') {
+    const syncMode = pathname === '/sync-all' ? 'all' : (mode || 'new');
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${syncMode === 'all' ? 'Full Sync' : 'Incremental Sync'}</title>
+        <style>
+          body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
+          h1 { font-size: 72px; font-weight: normal; margin-bottom: 40px; }
+          button { font-size: 48px; background: none; border: none; cursor: pointer; margin: 20px 0; }
+          button:hover { opacity: 0.7; }
+          button:disabled { opacity: 0.3; cursor: not-allowed; }
+          .back { font-size: 24px; color: #666; text-decoration: none; }
+          .status { background: #f5f5f5; border-radius: 8px; padding: 20px; margin: 20px 0; }
+          .message { padding: 8px; margin: 4px 0; border-left: 3px solid #ccc; }
+          .success { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
+          .error { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+          .info { border-left-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+        </style>
+      </head>
+      <body>
+        <a href="/?password=${password}" class="back">← Back to Dashboard</a>
+        <h1>${syncMode === 'all' ? 'Full Sync - Smart Diff' : 'Incremental Sync'}</h1>
+        <p>${syncMode === 'all' ? 'Complete reconciliation using Smart Diff technology' : 'Sync recent bookmarks only'}</p>
+        
+        <button id="syncBtn" onclick="startSync()">
+          Start ${syncMode === 'all' ? 'Smart Diff' : 'Incremental'} Sync
+        </button>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <script>
+          function startSync() {
+            const btn = document.getElementById('syncBtn');
+            const status = document.getElementById('status');
+            
+            btn.disabled = true;
+            btn.textContent = 'Sync Running...';
+            status.style.display = 'block';
+            status.innerHTML = '';
+            
+            const evtSource = new EventSource('/sync-stream?password=${password}&mode=${syncMode}');
+            
+            evtSource.onmessage = function(event) {
+              const data = JSON.parse(event.data);
+              const div = document.createElement('div');
+              div.className = 'message ' + (data.type || 'info');
+              div.textContent = data.message;
+              status.appendChild(div);
+              status.scrollTop = status.scrollHeight;
+              
+              if (data.isComplete) {
+                evtSource.close();
+                btn.disabled = false;
+                btn.textContent = 'Start ${syncMode === 'all' ? 'Smart Diff' : 'Incremental'} Sync';
+              }
+            };
+            
+            evtSource.onerror = function() {
+              evtSource.close();
+              btn.disabled = false;
+              btn.textContent = 'Start ${syncMode === 'all' ? 'Smart Diff' : 'Incremental'} Sync';
+              const div = document.createElement('div');
+              div.className = 'message error';
+              div.textContent = '❌ Connection error';
+              status.appendChild(div);
+            };
+          }
+        </script>
+      </body>
+      </html>
+    `);
+    return;
+  }
+  
+  // Dashboard (root)
+  if (pathname === '/') {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Raindrop/Notion Sync</title>
+        <style>
+          body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
+          h1 { font-size: 72px; font-weight: normal; letter-spacing: -0.05em; margin-bottom: 40px; }
+          .count { font-size: 72px; margin-bottom: 20px; }
+          .status { font-size: 72px; margin-bottom: 40px; color: #666; }
+          .actions a { font-size: 72px; display: block; margin: 20px 0; color: #000; text-decoration: none; }
+          .actions a:hover { opacity: 0.7; }
+          .actions a.secondary { color: #e1e1e1; }
+          .indicator { width: 100px; height: 20px; margin-bottom: 40px; background: #ff0000; }
+          .indicator.synced { background: #17d827; }
+        </style>
+      </head>
+      <body>
+        <div id="indicator" class="indicator"></div>
+        <h1>Raindrop/Notion Sync</h1>
+        <div class="count" id="raindrop">... Raindrop Bookmarks</div>
+        <div class="count" id="notion">... Notion Pages</div>
+        <div class="status" id="status">Loading...</div>
+        
+        <div class="actions">
+          <a href="/sync?password=${password}&mode=new">Sync New ↻</a>
+          <a href="/sync-all?password=${password}" class="secondary">Reset / FullSync</a>
+        </div>
+        
+        <script>
+          fetch('/api/counts?password=${password}')
+            .then(r => r.json())
+            .then(data => {
+              document.getElementById('raindrop').textContent = data.raindropTotal.toLocaleString() + ' Raindrop Bookmarks';
+              document.getElementById('notion').textContent = data.notionTotal.toLocaleString() + ' Notion Pages';
+              
+              const diff = Math.abs(data.raindropTotal - data.notionTotal);
+              const synced = diff <= 5;
+              
+              if (synced) {
+                document.getElementById('indicator').classList.add('synced');
+                document.getElementById('status').textContent = 'All bookmarks are synchronized';
+                document.getElementById('status').style.color = '#17d827';
+              } else {
+                document.getElementById('status').textContent = diff.toLocaleString() + ' bookmarks need synchronization';
+                document.getElementById('status').style.color = '#ff0000';
+              }
+            })
+            .catch(e => {
+              document.getElementById('status').textContent = 'Error loading status';
+              document.getElementById('status').style.color = '#ff0000';
+            });
+        </script>
+      </body>
+      </html>
+    `);
+    return;
+  }
+  
+  // 404
+  res.status(404).json({ error: 'Not found' });
+};
