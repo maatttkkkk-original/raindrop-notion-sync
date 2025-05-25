@@ -14,7 +14,7 @@
   --toggle-bg: #E1E1E1;
   
   /* Font size scaling - adjust the base size based on viewport width */
-  font-size: calc(10px + 2vmin);
+  font-size: calc(10px + 1.25vmin);
   
   /* Line height */
   line-height: 0.8;
