@@ -139,10 +139,10 @@ app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
   });
 });
 
-// Sync All page route - SECURED (for full reconciliation)
+// ✅ NEW EFFICIENT ROUTE:
 app.get('/sync-all', { preHandler: requirePassword }, async (request, reply) => {
   const mode = 'all'; // Always full sync for sync-all
-  return reply.view('sync-chunked.hbs', { 
+  return reply.view('sync.hbs', {  // Use the efficient template instead!
     mode,
     password: request.query.password
   });
