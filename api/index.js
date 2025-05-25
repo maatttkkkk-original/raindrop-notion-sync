@@ -3,13 +3,21 @@ const path = require('path');
 const { getRaindrops } = require('./services/raindrop');
 const { getNotionPages, createNotionPage, updateNotionPage, deleteNotionPage } = require('./services/notion');
 
-// Register view engine for Handlebars
+// Register view engine for Handlebars with helpers
 fastify.register(require('@fastify/view'), {
   engine: {
     handlebars: require('handlebars')
   },
   root: path.join(__dirname, '..', 'src', 'pages'),
-  layout: false
+  layout: false,
+  options: {
+    helpers: {
+      // Add the eq helper that your templates need
+      eq: function(a, b) {
+        return a === b;
+      }
+    }
+  }
 });
 
 // Register static files

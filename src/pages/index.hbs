@@ -9,9 +9,6 @@
   <link rel="stylesheet" href="/public/styles/design-system.css">
   <link rel="stylesheet" href="/public/styles/dashboard.css">
   <link rel="stylesheet" href="/public/styles/components.css">
-  
-  <!-- Preload critical assets -->
-  <link rel="preload" href="/public/fonts/helvetica-neue.woff2" as="font" type="font/woff2" crossorigin>
 </head>
 <body>
   <div class="container">
@@ -33,13 +30,11 @@
       <div class="count-display loading" id="raindrop-display">
         <span class="text-huge" id="raindrop-count">...</span>
         <span class="text-huge"> Raindrop Bookmarks</span>
-        <span class="loading-spinner visually-hidden" id="raindrop-spinner" aria-hidden="true">⟳</span>
       </div>
       
       <div class="count-display loading" id="notion-display">
         <span class="text-huge" id="notion-count">...</span>
         <span class="text-huge"> Notion Pages</span>
-        <span class="loading-spinner visually-hidden" id="notion-spinner" aria-hidden="true">⟳</span>
       </div>
       
       <!-- Status Message -->
@@ -93,23 +88,66 @@
     </main>
   </div>
   
-  <!-- Loading Overlay -->
-  <div id="loading-overlay" class="loading-overlay d-none" aria-hidden="true">
-    <div class="loading-spinner-large"></div>
-  </div>
-  
   <!-- JavaScript -->
   <script src="/public/scripts/utils.js"></script>
   <script src="/public/scripts/dashboard.js"></script>
   
   <script>
-    // Initialize dashboard with password
+    // Fixed initialization - wait for scripts to load
     document.addEventListener('DOMContentLoaded', function() {
       const password = '{{password}}';
-      if (window.Dashboard) {
-        window.Dashboard.init(password);
+      
+      // Simple loading function if dashboard manager doesn't exist
+      if (!window.dashboardManager) {
+        console.log('Dashboard manager not found, using simple loading');
+        loadCountsSimple(password);
       }
     });
+    
+    // Simple fallback function
+    async function loadCountsSimple(password) {
+      try {
+        const response = await fetch(`/api/counts?password=${encodeURIComponent(password)}`);
+        const data = await response.json();
+        
+        // Update counts
+        document.getElementById('raindrop-count').textContent = data.raindropTotal.toLocaleString();
+        document.getElementById('notion-count').textContent = data.notionTotal.toLocaleString();
+        
+        // Update status
+        const difference = Math.abs(data.raindropTotal - data.notionTotal);
+        const isSynced = difference <= 5;
+        
+        const statusIndicator = document.getElementById('status-indicator');
+        const statusMessage = document.getElementById('status-message');
+        
+        if (isSynced) {
+          statusIndicator.classList.remove('not-synced');
+          statusIndicator.classList.add('synced');
+          statusMessage.textContent = 'All bookmarks are synchronized';
+          statusMessage.className = 'status-message synced text-huge';
+        } else {
+          statusMessage.textContent = `${difference.toLocaleString()} bookmarks need synchronization`;
+          statusMessage.className = 'status-message not-synced text-huge';
+        }
+        
+        // Remove loading states
+        document.getElementById('raindrop-display').classList.remove('loading');
+        document.getElementById('notion-display').classList.remove('loading');
+        
+      } catch (error) {
+        console.error('Failed to load counts:', error);
+        document.getElementById('raindrop-count').textContent = 'Error';
+        document.getElementById('notion-count').textContent = 'Error';
+        document.getElementById('status-message').textContent = 'Failed to load sync status';
+        
+        // Show error message
+        document.getElementById('error-message').classList.remove('d-none');
+        document.getElementById('retry-button').addEventListener('click', () => {
+          location.reload();
+        });
+      }
+    }
   </script>
 </body>
 </html>
