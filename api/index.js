@@ -139,6 +139,26 @@ app.get('/sync', { preHandler: requirePassword }, async (request, reply) => {
   });
 });
 
+// CHUNKED SYNC API - Add after /sync route
+app.get('/sync-chunked', { preHandler: requirePassword }, (request, reply) => {
+  // [The clean API code I provided above]
+});
+
+async function performChunkedSync(mode, chunkSize, startOffset, streamId, reply) {
+  // [The performChunkedSync function from above]
+}
+
+
+// Chunked sync page route - SECURED
+app.get('/sync-chunked-page', { preHandler: requirePassword }, async (request, reply) => {
+  const mode = request.query.mode || 'all';
+  return reply.view('sync-chunked.hbs', { 
+    mode,
+    password: request.query.password
+  });
+});
+
+
 // SSE route for streaming sync updates - SECURED WITH ANTI-RESTART PROTECTION
 app.get('/sync-stream', { preHandler: requirePassword }, (request, reply) => {
   const mode = request.query.mode || 'new';

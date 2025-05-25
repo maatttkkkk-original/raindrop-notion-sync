@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chunked Sync</title>
+  <link rel="stylesheet" href="/public/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+  <div class="container">
+    <h1>Chunked Sync ({{mode}})</h1>
+    <p>Processing large datasets in 100-item chunks to avoid timeouts.</p>
+    
+    <div id="sync-controls">
+      <button id="start-chunked-sync" class="sync-new">Start Chunked Sync</button>
+      <a href="/?password={{password}}" class="back-button">Back ↤</a>
+    </div>
+    
+    <div id="sync-progress" style="display: none;">
+      <div class="sync-stats">
+        <span id="added-count">0</span> added, 
+        <span id="updated-count">0</span> updated, 
+        <span id="skipped-count">0</span> skipped
+      </div>
+      
+      <div class="live-updates" id="updates"></div>
+    </div>
+  </div>
+
+  <script>
+    // Chunked sync JavaScript logic here
+  </script>
+</body>
+</html>
