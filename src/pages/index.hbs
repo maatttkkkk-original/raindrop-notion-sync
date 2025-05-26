@@ -47,6 +47,11 @@
         Calculating sync status...
       </div>
       
+      <!-- Cache Status Display -->
+      <div class="status-message calculating text-medium" id="cache-status" role="status">
+        Loading cache status...
+      </div>
+      
       <!-- Error Message -->
       <div id="error-message" class="error-message d-none" role="alert">
         <p>Failed to load sync status.</p>
@@ -55,8 +60,8 @@
         </button>
       </div>
       
-      <!-- Action Buttons -->
-      <div class="dashboard-actions" role="navigation" aria-label="Sync actions">
+      <!-- Standard Sync Actions -->
+      <div class="dashboard-actions" role="navigation" aria-label="Standard sync actions">
         <a 
           href="/sync?password={{password}}&mode=new" 
           class="action-button primary"
@@ -71,6 +76,33 @@
           id="full-sync-button"
         >
           Reset / FullSync
+        </a>
+      </div>
+      
+      <!-- Cached Sync Actions -->
+      <div class="dashboard-actions" role="navigation" aria-label="Cached sync actions">
+        <a 
+          href="/sync-cached?password={{password}}&mode=incremental" 
+          class="action-button cached"
+          id="cached-sync-new-button"
+        >
+          CACHED Sync New ↻ [FAST]
+        </a>
+        
+        <a 
+          href="/sync-all-cached?password={{password}}" 
+          class="action-button cached"
+          id="cached-full-sync-button"
+        >
+          CACHED Reset / FullSync [FAST]
+        </a>
+        
+        <a 
+          href="/cache?password={{password}}" 
+          class="action-button secondary"
+          id="cache-manage-button"
+        >
+          Manage Cache
         </a>
       </div>
       
@@ -97,10 +129,15 @@
     document.addEventListener('DOMContentLoaded', function() {
       const password = '{{password}}';
       
+      // Load both counts and cache status
+      Promise.all([
+        loadCountsSimple(password),
+        loadCacheStatus(password)
+      ]);
+      
       // Simple loading function if dashboard manager doesn't exist
       if (!window.dashboardManager) {
         console.log('Dashboard manager not found, using simple loading');
-        loadCountsSimple(password);
       }
     });
     
@@ -146,6 +183,63 @@
         document.getElementById('retry-button').addEventListener('click', () => {
           location.reload();
         });
+      }
+    }
+    
+    // Load cache status
+    async function loadCacheStatus(password) {
+      try {
+        const response = await fetch(`/api/cache-status?password=${encodeURIComponent(password)}`);
+        const data = await response.json();
+        
+        const cacheStatusDiv = document.getElementById('cache-status');
+        const cachedButtons = document.querySelectorAll('.action-button.cached');
+        
+        if (data.success && data.cache.exists) {
+          const cache = data.cache;
+          
+          if (cache.valid) {
+            cacheStatusDiv.textContent = `Cache: ${cache.metadata.itemCount.toLocaleString()} items, ${cache.metadata.ageMinutes}m old`;
+            cacheStatusDiv.className = 'status-message synced text-medium';
+            
+            // Enable cached buttons
+            cachedButtons.forEach(btn => {
+              btn.style.opacity = '1';
+              btn.style.pointerEvents = 'auto';
+            });
+          } else {
+            cacheStatusDiv.textContent = `Cache expired (${cache.metadata.ageHours}h old) - refresh needed`;
+            cacheStatusDiv.className = 'status-message not-synced text-medium';
+            
+            // Disable cached buttons
+            cachedButtons.forEach(btn => {
+              btn.style.opacity = '0.5';
+              btn.style.pointerEvents = 'none';
+              btn.onclick = (e) => {
+                e.preventDefault();
+                alert('Cache is expired. Please refresh cache first.');
+              };
+            });
+          }
+        } else {
+          cacheStatusDiv.textContent = 'No cache found - create cache to enable fast sync';
+          cacheStatusDiv.className = 'status-message not-synced text-medium';
+          
+          // Disable cached buttons
+          cachedButtons.forEach(btn => {
+            btn.style.opacity = '0.5';
+            btn.style.pointerEvents = 'none';
+            btn.onclick = (e) => {
+              e.preventDefault();
+              alert('No cache found. Please create cache first.');
+            };
+          });
+        }
+        
+      } catch (error) {
+        console.error('Failed to load cache status:', error);
+        document.getElementById('cache-status').textContent = 'Cache status unavailable';
+        document.getElementById('cache-status').className = 'status-message not-synced text-medium';
       }
     }
   </script>
