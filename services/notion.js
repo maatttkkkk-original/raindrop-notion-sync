@@ -6,10 +6,106 @@ const fetch = require('node-fetch');
 const NOTION_API_URL = 'https://api.notion.com/v1';
 const NOTION_VERSION = '2022-06-28';
 
+// Conservative rate limiting for large datasets
+const RATE_LIMIT_CONFIG = {
+  baseDelay: 800,           // 800ms between requests (conservative)
+  maxRetries: 5,            // Max retry attempts
+  backoffMultiplier: 2,     // Exponential backoff
+  maxBackoffDelay: 30000,   // Max 30 seconds between retries
+  pageSize: 50,             // Smaller page size for stability
+  batchTimeout: 60000       // 60 second timeout per batch
+};
+
+/**
+ * Sleep utility for delays
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Calculate exponential backoff delay
+ */
+function calculateBackoffDelay(attempt) {
+  const delay = RATE_LIMIT_CONFIG.baseDelay * Math.pow(RATE_LIMIT_CONFIG.backoffMultiplier, attempt);
+  return Math.min(delay, RATE_LIMIT_CONFIG.maxBackoffDelay);
+}
+
+/**
+ * Robust API call with retry logic and rate limiting
+ */
+async function makeNotionAPICall(url, options = {}, attempt = 0) {
+  const maxRetries = RATE_LIMIT_CONFIG.maxRetries;
+  
+  try {
+    // Add conservative delay before each request (except first attempt)
+    if (attempt > 0) {
+      const backoffDelay = calculateBackoffDelay(attempt - 1);
+      console.log(`⏳ Backing off for ${backoffDelay}ms (attempt ${attempt + 1}/${maxRetries + 1})`);
+      await sleep(backoffDelay);
+    } else {
+      // Even first requests get a base delay for politeness
+      await sleep(RATE_LIMIT_CONFIG.baseDelay);
+    }
+    
+    const response = await fetch(url, {
+      timeout: RATE_LIMIT_CONFIG.batchTimeout,
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
+        'Notion-Version': NOTION_VERSION,
+        'Content-Type': 'application/json',
+        ...options.headers
+      }
+    });
+    
+    // Handle rate limiting with exponential backoff
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('retry-after');
+      const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : calculateBackoffDelay(attempt);
+      
+      console.log(`⏰ Rate limited. Waiting ${waitTime}ms before retry...`);
+      await sleep(waitTime);
+      
+      if (attempt < maxRetries) {
+        return makeNotionAPICall(url, options, attempt + 1);
+      } else {
+        throw new Error(`Rate limited after ${maxRetries} retries`);
+      }
+    }
+    
+    // Handle other HTTP errors
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+      
+      // Some errors are worth retrying (5xx, timeouts)
+      const retryableStatuses = [500, 502, 503, 504];
+      if (retryableStatuses.includes(response.status) && attempt < maxRetries) {
+        console.log(`🔄 Retryable error ${response.status}, attempt ${attempt + 1}/${maxRetries + 1}`);
+        return makeNotionAPICall(url, options, attempt + 1);
+      }
+      
+      throw new Error(`Notion API error (${response.status}): ${errorData.message || response.statusText}`);
+    }
+    
+    return await response.json();
+    
+  } catch (error) {
+    // Handle network errors with retry
+    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.type === 'request-timeout') {
+      if (attempt < maxRetries) {
+        console.log(`🌐 Network error, retrying... (attempt ${attempt + 1}/${maxRetries + 1})`);
+        return makeNotionAPICall(url, options, attempt + 1);
+      }
+    }
+    
+    console.error(`❌ Notion API call failed:`, error.message);
+    throw error;
+  }
+}
+
 /**
  * Helper function to normalize URLs for comparison
- * @param {string} url - URL to normalize
- * @returns {string} Normalized URL
  */
 function normalizeUrl(url) {
   try {
@@ -24,262 +120,228 @@ function normalizeUrl(url) {
 
 /**
  * Helper function to normalize titles for comparison
- * @param {string} title - Title to normalize
- * @returns {string} Normalized title
  */
 function normalizeTitle(title) {
   return (title || '').trim().toLowerCase();
 }
 
 /**
- * Helper function to chunk arrays for batch processing
- * @param {Array} arr - Array to chunk
- * @param {number} size - Size of each chunk
- * @returns {Array} Array of chunks
- */
-function chunkArray(arr, size) {
-  const result = [];
-  for (let i = 0; i < arr.length; i += size) {
-    result.push(arr.slice(i, i + size));
-  }
-  return result;
-}
-
-/**
- * Get all pages from the Notion database
- * @returns {Promise<Array>} Array of Notion pages
+ * Get all pages from the Notion database with robust pagination and rate limiting
  */
 async function getNotionPages() {
+  console.log('📚 Starting Notion pages fetch with conservative rate limiting...');
+  
   const pages = [];
   let hasMore = true;
   let startCursor = null;
   let requestCount = 0;
-
-  while (hasMore) {
-    // Add delay to prevent rate limiting (after first request)
-    if (requestCount > 0) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    
-    try {
-      const res = await fetch(`${NOTION_API_URL}/databases/${process.env.NOTION_DB_ID}/query`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
-          'Notion-Version': NOTION_VERSION,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(startCursor ? { start_cursor: startCursor } : {})
-      });
-
-      if (!res.ok) {
-        // Handle rate limiting
-        if (res.status === 429) {
-          console.log('⏳ Rate limit hit, waiting 5 seconds...');
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          continue; // Try again without incrementing
-        }
-        
-        const data = await res.json();
-        throw new Error(`Notion API error: ${data.message || `Status ${res.status}`}`);
+  let totalFetchTime = Date.now();
+  
+  try {
+    while (hasMore) {
+      const batchStartTime = Date.now();
+      
+      console.log(`📄 Fetching Notion pages batch ${requestCount + 1} (${pages.length} pages so far)...`);
+      
+      const requestBody = {
+        page_size: RATE_LIMIT_CONFIG.pageSize
+      };
+      
+      if (startCursor) {
+        requestBody.start_cursor = startCursor;
       }
-
-      const data = await res.json();
-      pages.push(...data.results);
+      
+      const data = await makeNotionAPICall(
+        `${NOTION_API_URL}/databases/${process.env.NOTION_DB_ID}/query`,
+        {
+          method: 'POST',
+          body: JSON.stringify(requestBody)
+        }
+      );
+      
+      const batchPages = data.results || [];
+      pages.push(...batchPages);
       hasMore = data.has_more;
       startCursor = data.next_cursor;
       requestCount++;
       
-      console.log(`Retrieved ${data.results.length} Notion pages (total so far: ${pages.length})`);
-    } catch (error) {
-      console.error('Error fetching Notion pages:', error);
-      throw error;
+      const batchTime = Date.now() - batchStartTime;
+      console.log(`✅ Batch ${requestCount} complete: ${batchPages.length} pages in ${batchTime}ms (total: ${pages.length})`);
+      
+      // Safety check to prevent infinite loops
+      if (requestCount > 200) { // Reasonable max for very large databases
+        console.warn(`⚠️ Reached maximum batch limit (${requestCount}), stopping fetch`);
+        break;
+      }
+      
+      // Progress update every 5 batches
+      if (requestCount % 5 === 0) {
+        const elapsed = Math.round((Date.now() - totalFetchTime) / 1000);
+        console.log(`🕐 Progress: ${pages.length} pages fetched in ${elapsed}s (${requestCount} API calls)`);
+      }
     }
-  }
-
-  return pages;
-}
-
-/**
- * Get total count of pages in the Notion database
- * @returns {Promise<number>} Total number of pages
- */
-async function getTotalNotionPages() {
-  try {
-    const pages = await getNotionPages();
-    return pages.length;
+    
+    const totalTime = Math.round((Date.now() - totalFetchTime) / 1000);
+    const avgTimePerBatch = Math.round(totalTime / requestCount * 1000);
+    
+    console.log(`🎉 Notion fetch complete: ${pages.length} pages in ${totalTime}s (${requestCount} API calls, ${avgTimePerBatch}ms avg/batch)`);
+    
+    return pages;
+    
   } catch (error) {
-    console.error('Error getting Notion page count:', error);
+    const partialTime = Math.round((Date.now() - totalFetchTime) / 1000);
+    console.error(`❌ Notion fetch failed after ${partialTime}s with ${pages.length} pages retrieved:`, error.message);
+    
+    // Return partial results if we got some data
+    if (pages.length > 0) {
+      console.log(`🔄 Returning ${pages.length} partial results`);
+      return pages;
+    }
+    
     throw error;
   }
 }
 
 /**
- * Delete a Notion page (archive it)
- * @param {string} pageId - ID of the page to delete
- * @returns {Promise<boolean>} Success or failure
+ * Get total count of pages in the Notion database
+ */
+async function getTotalNotionPages() {
+  try {
+    console.log('🔢 Getting total Notion page count...');
+    const pages = await getNotionPages();
+    console.log(`📊 Total Notion pages: ${pages.length}`);
+    return pages.length;
+  } catch (error) {
+    console.error('❌ Error getting Notion page count:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Delete a Notion page (archive it) with retry logic
  */
 async function deleteNotionPage(pageId) {
   try {
-    const res = await fetch(`${NOTION_API_URL}/pages/${pageId}`, {
+    console.log(`🗑️ Deleting Notion page: ${pageId}`);
+    
+    await makeNotionAPICall(`${NOTION_API_URL}/pages/${pageId}`, {
       method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
-        'Notion-Version': NOTION_VERSION,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        archived: true
-      })
+      body: JSON.stringify({ archived: true })
     });
-
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(`Failed to delete page: ${data.message || `Status ${res.status}`}`);
-    }
-
+    
+    console.log(`✅ Successfully deleted page: ${pageId}`);
     return true;
+    
   } catch (error) {
-    console.error(`Error deleting page ${pageId}:`, error);
+    console.error(`❌ Failed to delete page ${pageId}:`, error.message);
     throw error;
   }
 }
 
 /**
  * Update a Notion page with raindrop data
- * @param {string} pageId - ID of the page to update
- * @param {Object} item - Raindrop data
- * @returns {Promise<boolean>} Success or failure
  */
 async function updateNotionPage(pageId, item) {
-  const page = {
-    properties: {
-      Name: { title: [{ text: { content: item.title || 'Untitled' } }] },
-      URL: { url: item.link },
-      Tags: {
-        multi_select: (item.tags || []).map(tag => ({ name: tag }))
-      }
-    }
-  };
-
   try {
-    const res = await fetch(`${NOTION_API_URL}/pages/${pageId}`, {
+    console.log(`🔄 Updating Notion page: ${pageId} - "${item.title}"`);
+    
+    const page = {
+      properties: {
+        Name: { title: [{ text: { content: item.title || 'Untitled' } }] },
+        URL: { url: item.link },
+        Tags: {
+          multi_select: (item.tags || []).map(tag => ({ name: tag }))
+        }
+      }
+    };
+    
+    await makeNotionAPICall(`${NOTION_API_URL}/pages/${pageId}`, {
       method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
-        'Notion-Version': NOTION_VERSION,
-        'Content-Type': 'application/json'
-      },
       body: JSON.stringify(page)
     });
-
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(`Failed to update page: ${data.message || `Status ${res.status}`}`);
-    }
-
-    // Update the image if needed (in a non-blocking way)
+    
+    console.log(`✅ Successfully updated page: ${pageId}`);
+    
+    // Handle image updates asynchronously with conservative delays
     const imageUrl = item.cover || 
                     (item.media && item.media.length > 0 && item.media[0] && item.media[0].link) || 
                     (item.preview && item.preview.length > 0 && item.preview[0]);
                     
     if (imageUrl) {
-      // Add a small delay to avoid overwhelming the Notion API
+      // Use a longer delay for image updates to be conservative
       setTimeout(async () => {
         try {
           await updateNotionPageImage(pageId, imageUrl);
         } catch (imageError) {
-          console.warn(`Warning: Could not update image for page ${pageId}:`, imageError.message);
+          console.warn(`⚠️ Image update failed for page ${pageId}: ${imageError.message}`);
         }
-      }, 500);
+      }, 1500); // Increased delay for image updates
     }
-
+    
     return true;
+    
   } catch (error) {
-    console.error(`Error updating page ${pageId}:`, error);
+    console.error(`❌ Failed to update page ${pageId}:`, error.message);
     throw error;
   }
 }
 
 /**
- * Update the image block of a Notion page
- * @param {string} pageId - ID of the page
- * @param {string} imageUrl - URL of the image
- * @returns {Promise<boolean>} Success or failure
+ * Update the image block of a Notion page with enhanced validation
  */
 async function updateNotionPageImage(pageId, imageUrl) {
   try {
-    // Validate the image URL before proceeding
+    // Enhanced image URL validation
     if (!imageUrl || typeof imageUrl !== 'string') {
-      console.log(`Skipping image update for page ${pageId}: Invalid image URL`);
       return false;
     }
     
-    // Check if the URL is properly formatted and has a valid protocol
+    // Validate URL format
+    let validUrl;
     try {
-      const url = new URL(imageUrl);
-      // Notion only supports https and http protocols for external images
-      if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-        console.log(`Skipping image update for page ${pageId}: Unsupported protocol ${url.protocol}`);
+      validUrl = new URL(imageUrl);
+      if (validUrl.protocol !== 'https:' && validUrl.protocol !== 'http:') {
+        console.log(`⚠️ Skipping image with unsupported protocol: ${validUrl.protocol}`);
         return false;
       }
     } catch (e) {
-      console.log(`Skipping image update for page ${pageId}: Invalid URL format`);
+      console.log(`⚠️ Skipping malformed image URL: ${imageUrl}`);
       return false;
     }
     
-    // Additional validation: check common image extensions
-    const validExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp'];
-    const hasValidExtension = validExtensions.some(ext => 
-      imageUrl.toLowerCase().endsWith(ext) || imageUrl.toLowerCase().includes(ext + '?')
-    );
+    // Check for valid image patterns
+    const imagePatterns = [
+      /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?|$)/i,
+      /image/i,
+      /img/i,
+      /thumbnail/i,
+      /asset/i,
+      /media/i
+    ];
     
-    // If no valid extension, check if it's likely a dynamic image URL
-    if (!hasValidExtension && 
-        !imageUrl.includes('image') && 
-        !imageUrl.includes('img') &&
-        !imageUrl.includes('thumbnail') &&
-        !imageUrl.includes('asset')) {
-      console.log(`Skipping image update for page ${pageId}: URL doesn't appear to be an image: ${imageUrl}`);
+    const isValidImage = imagePatterns.some(pattern => pattern.test(imageUrl));
+    if (!isValidImage) {
+      console.log(`⚠️ URL doesn't appear to be an image: ${imageUrl}`);
       return false;
     }
     
-    // First check if the page already has an image block
-    const blocksRes = await fetch(`${NOTION_API_URL}/blocks/${pageId}/children`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
-        'Notion-Version': NOTION_VERSION
-      }
-    });
+    // Get existing blocks
+    const blocksData = await makeNotionAPICall(`${NOTION_API_URL}/blocks/${pageId}/children`);
     
-    if (!blocksRes.ok) {
-      throw new Error(`Failed to get blocks: Status ${blocksRes.status}`);
-    }
-    
-    const blocksData = await blocksRes.json();
-    let imageBlockExists = false;
     let imageBlockId = null;
-    
     if (blocksData.results) {
       for (const block of blocksData.results) {
         if (block.type === 'image') {
-          imageBlockExists = true;
           imageBlockId = block.id;
           break;
         }
       }
     }
     
-    if (imageBlockExists && imageBlockId) {
+    if (imageBlockId) {
       // Update existing image block
-      const updateRes = await fetch(`${NOTION_API_URL}/blocks/${imageBlockId}`, {
+      await makeNotionAPICall(`${NOTION_API_URL}/blocks/${imageBlockId}`, {
         method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
-          'Notion-Version': NOTION_VERSION,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({
           image: {
             type: 'external',
@@ -287,24 +349,10 @@ async function updateNotionPageImage(pageId, imageUrl) {
           }
         })
       });
-      
-      if (!updateRes.ok) {
-        // Get more detailed error information
-        const errorData = await updateRes.json().catch(() => ({ message: 'Unknown error' }));
-        console.log(`Image update error details:`, JSON.stringify(errorData));
-        throw new Error(`Failed to update image: Status ${updateRes.status}, Message: ${errorData.message || 'Unknown error'}`);
-      }
-      
-      return true;
     } else {
       // Create new image block
-      const createRes = await fetch(`${NOTION_API_URL}/blocks/${pageId}/children`, {
+      await makeNotionAPICall(`${NOTION_API_URL}/blocks/${pageId}/children`, {
         method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
-          'Notion-Version': NOTION_VERSION,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({
           children: [{
             object: 'block',
@@ -316,79 +364,61 @@ async function updateNotionPageImage(pageId, imageUrl) {
           }]
         })
       });
-      
-      if (!createRes.ok) {
-        // Get more detailed error information
-        const errorData = await createRes.json().catch(() => ({ message: 'Unknown error' }));
-        console.log(`Image creation error details:`, JSON.stringify(errorData));
-        throw new Error(`Failed to create image: Status ${createRes.status}, Message: ${errorData.message || 'Unknown error'}`);
-      }
-      
-      return true;
     }
+    
+    return true;
+    
   } catch (error) {
-    console.error(`Error updating image for page ${pageId}:`, error);
-    return false; // Image failure shouldn't fail the whole update
+    console.error(`❌ Image update failed for page ${pageId}:`, error.message);
+    return false; // Image failures shouldn't break the main sync
   }
 }
 
 /**
  * Create a new Notion page from raindrop data
- * @param {Object} item - Raindrop data
- * @returns {Promise<Object>} Result with success status and pageId
  */
 async function createNotionPage(item) {
-  console.log(`📝 Creating: "${item.title}"`);
-
-  const page = {
-    parent: { database_id: process.env.NOTION_DB_ID },
-    properties: {
-      Name: { title: [{ text: { content: item.title || 'Untitled' } }] },
-      URL: { url: item.link },
-      Tags: {
-        multi_select: (item.tags || []).map(tag => ({ name: tag }))
-      }
-    }
-  };
-
   try {
-    const res = await fetch(`${NOTION_API_URL}/pages`, {
+    console.log(`📝 Creating Notion page: "${item.title}"`);
+    
+    const page = {
+      parent: { database_id: process.env.NOTION_DB_ID },
+      properties: {
+        Name: { title: [{ text: { content: item.title || 'Untitled' } }] },
+        URL: { url: item.link },
+        Tags: {
+          multi_select: (item.tags || []).map(tag => ({ name: tag }))
+        }
+      }
+    };
+    
+    const createdPage = await makeNotionAPICall(`${NOTION_API_URL}/pages`, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
-        'Notion-Version': NOTION_VERSION,
-        'Content-Type': 'application/json'
-      },
       body: JSON.stringify(page)
     });
-
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(`Failed to create page: ${data.message || `Status ${res.status}`}`);
-    }
     
-    const createdPage = await res.json();
     const pageId = createdPage.id;
+    console.log(`✅ Successfully created page: ${pageId} - "${item.title}"`);
     
-    // Add image if available (in a non-blocking way)
+    // Handle image creation asynchronously
     const imageUrl = item.cover || 
                     (item.media && item.media.length > 0 && item.media[0] && item.media[0].link) || 
                     (item.preview && item.preview.length > 0 && item.preview[0]);
                     
     if (imageUrl) {
-      // Add a small delay to avoid overwhelming the Notion API
       setTimeout(async () => {
         try {
           await updateNotionPageImage(pageId, imageUrl);
         } catch (imageError) {
-          console.warn(`Warning: Could not add image to page ${pageId}:`, imageError.message);
+          console.warn(`⚠️ Image creation failed for page ${pageId}: ${imageError.message}`);
         }
-      }, 500);
+      }, 1500);
     }
-
+    
     return { success: true, pageId };
+    
   } catch (error) {
-    console.error(`Error creating page for "${item.title}":`, error);
+    console.error(`❌ Failed to create page for "${item.title}":`, error.message);
     return { success: false, error: error.message };
   }
 }
