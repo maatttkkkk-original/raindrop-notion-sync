@@ -1,5 +1,9 @@
 // Two-Mode Sync System: Reset & Full Sync + Smart Incremental with Temporal Filtering
 
+// Node.js built-in modules
+const fs = require('fs');
+const path = require('path');
+
 // Import your optimized service files
 const { getAllRaindrops, getRaindropTotal, getRecentRaindrops } = require('../services/raindrop');
 const { getNotionPages, getTotalNotionPages, createNotionPage, updateNotionPage, deleteNotionPage } = require('../services/notion');
