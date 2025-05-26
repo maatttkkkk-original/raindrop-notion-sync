@@ -94,35 +94,36 @@ async function performResetAndFullSync(limit = 0) {
     if (existingPages.length > 0) {
       sendUpdate(`🗑️ Deleting ${existingPages.length} existing Notion pages...`, 'processing');
       
-      // Delete in chunks to avoid overwhelming the API
-      const deleteChunks = chunkArray(existingPages, 10);
+      // Delete in batches using PROVEN WORKING TIMINGS
+      const deleteChunks = chunkArray(existingPages, 10); // 10 items per batch
       
       for (let i = 0; i < deleteChunks.length; i++) {
         const chunk = deleteChunks[i];
-        sendUpdate(`🗑️ Deleting chunk ${i + 1}/${deleteChunks.length} (${chunk.length} pages)`, 'processing');
+        sendUpdate(`🗑️ Deleting batch ${i + 1}/${deleteChunks.length} (${chunk.length} pages)`, 'processing');
         
         for (const page of chunk) {
           try {
             await deleteNotionPage(page.id);
             deletedCount++;
             
-            if (deletedCount % 10 === 0) {
+            if (deletedCount % 20 === 0) {
               sendUpdate(`🗑️ Deleted ${deletedCount}/${existingPages.length} pages`, 'processing');
             }
             
-            // Small delay between deletions
-            await new Promise(resolve => setTimeout(resolve, 100));
+            // PROVEN WORKING DELAY: 200ms between deletions
+            await new Promise(resolve => setTimeout(resolve, 200));
             
           } catch (error) {
             sendUpdate(`❌ Failed to delete page: ${error.message}`, 'failed');
             failedCount++;
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 400));
           }
         }
         
-        // Delay between chunks
+        // PROVEN WORKING DELAY: 2000ms between batches
         if (i < deleteChunks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          sendUpdate(`⏳ Deletion batch ${i + 1} complete, waiting...`, 'info');
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
       
@@ -152,21 +153,22 @@ async function performResetAndFullSync(limit = 0) {
     // === STEP 3: CREATE ALL PAGES ===
     sendUpdate(`📝 Creating ${raindrops.length} new Notion pages...`, 'processing');
     
-    // Create in chunks to manage API load
-    const createChunks = chunkArray(raindrops, 15);
+    // Create in batches using PROVEN WORKING TIMINGS from March 17th
+    const batches = chunkArray(raindrops, 10); // 10 items per batch (proven to work)
+    const batchCount = batches.length;
     
-    for (let i = 0; i < createChunks.length; i++) {
-      const chunk = createChunks[i];
-      sendUpdate(`📝 Creating chunk ${i + 1}/${createChunks.length} (${chunk.length} pages)`, 'processing');
+    for (let i = 0; i < batchCount; i++) {
+      const batch = batches[i];
+      sendUpdate(`📝 Processing batch ${i + 1}/${batchCount} (${batch.length} pages)`, 'processing');
       
-      for (const item of chunk) {
+      for (const item of batch) {
         try {
           const result = await createNotionPage(item);
           if (result.success) {
             createdCount++;
             sendUpdate(`✅ Created: "${item.title}"`, 'added');
             
-            if (createdCount % 25 === 0) {
+            if (createdCount % 20 === 0) {
               sendUpdate(`📊 Progress: ${createdCount}/${raindrops.length} pages created`, 'info');
             }
           } else {
@@ -174,20 +176,21 @@ async function performResetAndFullSync(limit = 0) {
             failedCount++;
           }
           
-          // Small delay between creations
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // PROVEN WORKING DELAY: 200ms between operations
+          await new Promise(resolve => setTimeout(resolve, 200));
           
         } catch (error) {
           sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
           failedCount++;
-          await new Promise(resolve => setTimeout(resolve, 200));
+          // Longer delay on error
+          await new Promise(resolve => setTimeout(resolve, 400));
         }
       }
       
-      // Delay between chunks
-      if (i < createChunks.length - 1) {
-        sendUpdate(`⏳ Chunk ${i + 1} complete, continuing...`, 'info');
-        await new Promise(resolve => setTimeout(resolve, 1500));
+      // PROVEN WORKING DELAY: 1000ms between batches (increased to 2000ms for extra safety)
+      if (i < batchCount - 1) {
+        sendUpdate(`⏳ Batch ${i + 1} complete, waiting before next batch...`, 'info');
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
     
@@ -394,12 +397,14 @@ async function performSmartIncrementalSync(daysBack = 30) {
             failedCount++;
           }
           
-          await new Promise(resolve => setTimeout(resolve, 150));
+          // PROVEN WORKING DELAY: 200ms between operations
+          await new Promise(resolve => setTimeout(resolve, 200));
           
         } catch (error) {
           sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
           failedCount++;
-          await new Promise(resolve => setTimeout(resolve, 300));
+          // PROVEN WORKING DELAY: 200ms between operations (error case gets 400ms)
+          await new Promise(resolve => setTimeout(resolve, 400));
         }
       }
     }
@@ -419,12 +424,14 @@ async function performSmartIncrementalSync(daysBack = 30) {
             failedCount++;
           }
           
-          await new Promise(resolve => setTimeout(resolve, 150));
+          // PROVEN WORKING DELAY: 200ms between operations
+          await new Promise(resolve => setTimeout(resolve, 200));
           
         } catch (error) {
           sendUpdate(`❌ Error updating "${item.title}": ${error.message}`, 'failed');
           failedCount++;
-          await new Promise(resolve => setTimeout(resolve, 300));
+          // PROVEN WORKING DELAY: 200ms between operations (error case gets 400ms)
+          await new Promise(resolve => setTimeout(resolve, 400));
         }
       }
     }
