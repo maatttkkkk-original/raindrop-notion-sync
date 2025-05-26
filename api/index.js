@@ -250,7 +250,7 @@ async function performSmartDiffSync(mode, limit = 0) {
             failedCount++;
           }
           
-          await new Promise(resolve => setTimeout(resolve, 300));
+          await new Promise(resolve => setTimeout(resolve, 100));
           
         } catch (error) {
           sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
