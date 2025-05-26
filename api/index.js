@@ -3,6 +3,8 @@
 // Import your optimized service files
 const { getAllRaindrops, getRaindropTotal, getRecentRaindrops } = require('../services/raindrop');
 const { getNotionPages, getTotalNotionPages, createNotionPage, updateNotionPage, deleteNotionPage } = require('../services/notion');
+
+// Cache system imports
 const fs = require('fs');
 const path = require('path');
 
@@ -31,7 +33,6 @@ function chunkArray(arr, size) {
 }
 
 // === CACHE SYSTEM ===
-// Cache configuration
 const CACHE_CONFIG = {
   cacheDir: '/tmp/raindrop-cache',
   raindropsFile: 'raindrops-data.json',
@@ -40,9 +41,6 @@ const CACHE_CONFIG = {
   compressionEnabled: true
 };
 
-/**
- * Ensure cache directory exists
- */
 function ensureCacheDir() {
   try {
     if (!fs.existsSync(CACHE_CONFIG.cacheDir)) {
@@ -56,9 +54,6 @@ function ensureCacheDir() {
   }
 }
 
-/**
- * Get cache file paths
- */
 function getCacheFilePaths() {
   return {
     raindrops: path.join(CACHE_CONFIG.cacheDir, CACHE_CONFIG.raindropsFile),
@@ -66,9 +61,6 @@ function getCacheFilePaths() {
   };
 }
 
-/**
- * Write data to cache with metadata
- */
 async function writeCacheData(raindrops) {
   const startTime = Date.now();
   
@@ -79,14 +71,12 @@ async function writeCacheData(raindrops) {
     
     const paths = getCacheFilePaths();
     
-    // Prepare cache data
     const cacheData = {
       raindrops,
       timestamp: Date.now(),
       count: raindrops.length
     };
     
-    // Prepare metadata
     const metadata = {
       cachedAt: new Date().toISOString(),
       timestamp: Date.now(),
@@ -95,8 +85,7 @@ async function writeCacheData(raindrops) {
       source: 'raindrop-api'
     };
     
-    // Write data (compress JSON)
-    const dataJson = JSON.stringify(cacheData, null, 0); // No formatting for smaller size
+    const dataJson = JSON.stringify(cacheData, null, 0);
     const metadataJson = JSON.stringify(metadata, null, 2);
     
     fs.writeFileSync(paths.raindrops, dataJson, 'utf8');
@@ -121,25 +110,19 @@ async function writeCacheData(raindrops) {
   }
 }
 
-/**
- * Read data from cache with validation
- */
 async function readCacheData() {
   const startTime = Date.now();
   
   try {
     const paths = getCacheFilePaths();
     
-    // Check if cache files exist
     if (!fs.existsSync(paths.raindrops) || !fs.existsSync(paths.metadata)) {
       throw new Error('Cache files not found');
     }
     
-    // Read metadata first
     const metadataRaw = fs.readFileSync(paths.metadata, 'utf8');
     const metadata = JSON.parse(metadataRaw);
     
-    // Check cache age
     const age = Date.now() - metadata.timestamp;
     const isExpired = age > CACHE_CONFIG.maxAge;
     
@@ -148,7 +131,6 @@ async function readCacheData() {
       throw new Error(`Cache expired (${ageHours}h old)`);
     }
     
-    // Read cache data
     const cacheRaw = fs.readFileSync(paths.raindrops, 'utf8');
     const cacheData = JSON.parse(cacheRaw);
     
@@ -162,7 +144,7 @@ async function readCacheData() {
       raindrops: cacheData.raindrops,
       metadata: {
         ...metadata,
-        age: Math.round(age / (1000 * 60)), // Age in minutes
+        age: Math.round(age / (1000 * 60)),
         isValid: !isExpired
       },
       stats: {
@@ -178,14 +160,10 @@ async function readCacheData() {
   }
 }
 
-/**
- * Get cache status without reading full data
- */
 async function getCacheStatus() {
   try {
     const paths = getCacheFilePaths();
     
-    // Check if cache exists
     const cacheExists = fs.existsSync(paths.raindrops) && fs.existsSync(paths.metadata);
     
     if (!cacheExists) {
@@ -196,17 +174,14 @@ async function getCacheStatus() {
       };
     }
     
-    // Read metadata only
     const metadataRaw = fs.readFileSync(paths.metadata, 'utf8');
     const metadata = JSON.parse(metadataRaw);
     
-    // Calculate cache age and validity
     const age = Date.now() - metadata.timestamp;
     const ageMinutes = Math.round(age / (1000 * 60));
     const ageHours = Math.round(age / (1000 * 60 * 60));
     const isValid = age <= CACHE_CONFIG.maxAge;
     
-    // Get file size
     const stats = fs.statSync(paths.raindrops);
     const sizeKB = Math.round(stats.size / 1024);
     
@@ -235,9 +210,6 @@ async function getCacheStatus() {
   }
 }
 
-/**
- * Clear cache files
- */
 async function clearCache() {
   try {
     const paths = getCacheFilePaths();
@@ -712,9 +684,6 @@ async function performSmartIncrementalSync(daysBack = 30) {
 
 // === CACHED SYNC FUNCTIONS ===
 
-/**
- * MODE 1: RESET & FULL SYNC (Using Cached Data)
- */
 async function performCachedResetAndFullSync(limit = 0) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
   console.log(`🔄 CACHED Reset & Full Sync starting - Lock ID: ${lockId}`);
@@ -795,7 +764,7 @@ async function performCachedResetAndFullSync(limit = 0) {
       sendUpdate('✅ Notion database is already empty', 'info');
     }
     
-    // === STEP 2: READ CACHED RAINDROP DATA (This is the magic!) ===
+    // === STEP 2: READ CACHED RAINDROP DATA ===
     sendUpdate('📁 Reading cached Raindrop data...', 'fetching');
     
     let raindrops = [];
@@ -809,7 +778,6 @@ async function performCachedResetAndFullSync(limit = 0) {
       throw new Error(`Failed to read cached raindrops: ${error.message}`);
     }
     
-    // Apply limit if specified
     if (limit > 0 && raindrops.length > limit) {
       raindrops = raindrops.slice(0, limit);
       sendUpdate(`✂️ Limited to ${limit} bookmarks for testing`, 'info');
@@ -861,7 +829,6 @@ async function performCachedResetAndFullSync(limit = 0) {
       }
     }
     
-    // === FINAL SUMMARY ===
     const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
     
     sendUpdate(`🎉 CACHED Reset & Full Sync completed in ${duration}s!`, 'complete');
@@ -896,9 +863,6 @@ async function performCachedResetAndFullSync(limit = 0) {
   }
 }
 
-/**
- * MODE 2: SMART INCREMENTAL SYNC (Using Cached Data)
- */
 async function performCachedSmartIncrementalSync(daysBack = 30) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
   console.log(`🧠 CACHED Smart Incremental Sync starting - Lock ID: ${lockId}, checking last ${daysBack} days`);
@@ -932,7 +896,7 @@ async function performCachedSmartIncrementalSync(daysBack = 30) {
     
     sendUpdate(`🧠 Starting CACHED Smart Incremental Sync (last ${daysBack} days)`, 'info');
     
-    // === STEP 1: GET RECENT RAINDROPS FROM CACHE (This is the magic!) ===
+    // === STEP 1: GET RECENT RAINDROPS FROM CACHE ===
     sendUpdate(`📁 Reading cached Raindrop data...`, 'fetching');
     
     let allRaindrops = [];
@@ -946,12 +910,11 @@ async function performCachedSmartIncrementalSync(daysBack = 30) {
       throw new Error(`Failed to read cached raindrops: ${error.message}`);
     }
     
-    // Filter for recent items (last X days)
     sendUpdate(`🔍 Filtering for recent items (last ${daysBack} days)...`, 'processing');
     
     const cutoffTime = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
     const recentRaindrops = allRaindrops.filter(item => {
-      if (!item.created) return true; // Include if no creation date
+      if (!item.created) return true;
       const itemTime = new Date(item.created).getTime();
       return itemTime >= cutoffTime;
     });
@@ -968,7 +931,6 @@ async function performCachedSmartIncrementalSync(daysBack = 30) {
       return { complete: true };
     }
     
-    // === STEP 2: BUILD NOTION URL LOOKUP ===
     sendUpdate('📡 Building Notion URL lookup...', 'processing');
     
     let notionPages = [];
@@ -995,7 +957,6 @@ async function performCachedSmartIncrementalSync(daysBack = 30) {
     
     sendUpdate(`✅ Built lookup maps from ${notionPages.length} Notion pages`, 'success');
     
-    // === STEP 3: SMART DIFF ON RECENT ITEMS ONLY ===
     sendUpdate('🔍 Performing Smart Diff on recent items...', 'processing');
     
     const itemsToAdd = [];
@@ -1061,8 +1022,6 @@ async function performCachedSmartIncrementalSync(daysBack = 30) {
       Math.round(((recentRaindrops.length - totalOperations) / recentRaindrops.length) * 100) : 100;
     sendUpdate(`🚀 Processing ${totalOperations} operations (${efficiency}% efficiency - using cached data!)`, 'info');
     
-    // === STEP 4: PROCESS OPERATIONS (FAST!) ===
-    
     if (itemsToAdd.length > 0) {
       sendUpdate(`➕ Creating ${itemsToAdd.length} new pages...`, 'processing');
       
@@ -1111,7 +1070,6 @@ async function performCachedSmartIncrementalSync(daysBack = 30) {
       }
     }
     
-    // === FINAL SUMMARY ===
     const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
     
     sendUpdate(`🎉 CACHED Smart Incremental Sync completed in ${duration}s!`, 'complete');
@@ -1198,309 +1156,7 @@ module.exports = async (req, res) => {
       return;
     }
     
-    if (pathname === '/sync-stream') {
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      
-      const streamId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-      activeStreams.set(streamId, res);
-      
-      console.log(`🔗 NEW SYNC REQUEST: ${streamId}, mode: ${mode}`);
-      
-      // Check if another sync is running
-      if (GLOBAL_SYNC_LOCK) {
-        const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
-        console.log(`🚫 SYNC LOCK ACTIVE - Lock ID: ${SYNC_LOCK_ID}, Duration: ${lockDuration}s`);
-        
-        res.write(`data: ${JSON.stringify({
-          message: `⏸️ Sync already running (${lockDuration}s elapsed). Please wait...`,
-          type: 'waiting',
-          lockInfo: { locked: true, lockId: SYNC_LOCK_ID, duration: lockDuration }
-        })}\n\n`);
-        return;
-      }
-      
-      // Set global lock
-      GLOBAL_SYNC_LOCK = true;
-      SYNC_START_TIME = Date.now();
-      SYNC_LOCK_ID = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-      
-      console.log(`🔐 SETTING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
-      
-      // Create new sync process
-      currentSync = {
-        mode,
-        limit,
-        daysBack,
-        isRunning: true,
-        lockId: SYNC_LOCK_ID,
-        startTime: Date.now(),
-        counts: { added: 0, updated: 0, skipped: 0, deleted: 0, failed: 0 },
-        completed: false
-      };
-      
-      // Choose sync mode
-      let syncPromise;
-      if (mode === 'reset' || mode === 'full') {
-        syncPromise = performResetAndFullSync(limit);
-      } else {
-        syncPromise = performSmartIncrementalSync(daysBack);
-      }
-      
-      // Start sync process
-      syncPromise
-        .then(() => {
-          console.log(`✅ Sync completed successfully - Lock ID: ${SYNC_LOCK_ID}`);
-        })
-        .catch(error => {
-          console.error(`❌ SYNC ERROR - Lock ID: ${SYNC_LOCK_ID}:`, error);
-          broadcastSSEData({
-            message: `Sync failed: ${error.message}`,
-            type: 'failed',
-            complete: true
-          });
-        })
-        .finally(() => {
-          // Always release lock
-          console.log(`🔓 RELEASING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
-          GLOBAL_SYNC_LOCK = false;
-          SYNC_START_TIME = null;
-          SYNC_LOCK_ID = null;
-          
-          if (currentSync) {
-            currentSync.isRunning = false;
-            currentSync = null;
-          }
-          
-          activeStreams.delete(streamId);
-        });
-      
-      // Handle client disconnect
-      req.on('close', () => {
-        activeStreams.delete(streamId);
-      });
-      
-      return;
-    }
-    
-    // Sync pages with mode selection
-    if (pathname === '/sync' || pathname === '/sync-all' || pathname === '/reset-sync') {
-      let syncMode, pageTitle, pageDescription;
-      
-      if (pathname === '/reset-sync') {
-        syncMode = 'reset';
-        pageTitle = 'Reset & Full Sync';
-        pageDescription = 'Delete all Notion pages and recreate from Raindrop';
-      } else if (pathname === '/sync-all') {
-        syncMode = 'reset';  // For now, full sync = reset sync
-        pageTitle = 'Reset & Full Sync';
-        pageDescription = 'Complete database reset and recreation';
-      } else {
-        syncMode = 'incremental';
-        pageTitle = 'Smart Incremental Sync';
-        pageDescription = 'Sync only recent bookmarks (last 30 days)';
-      }
-      
-      res.setHeader('Content-Type', 'text/html');
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>${pageTitle}</title>
-          <style>
-            body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-            h1 { font-size: 72px; font-weight: normal; margin-bottom: 40px; }
-            .subtitle { font-size: 24px; color: #666; margin-bottom: 40px; line-height: 1.4; }
-            button { font-size: 48px; background: none; border: none; cursor: pointer; margin: 20px 0; }
-            button:hover { opacity: 0.7; }
-            button:disabled { opacity: 0.3; cursor: not-allowed; }
-            .back { font-size: 24px; color: #666; text-decoration: none; }
-            .status { background: #f5f5f5; border-radius: 8px; padding: 20px; margin: 20px 0; max-height: 400px; overflow-y: auto; }
-            .message { padding: 8px; margin: 4px 0; border-left: 3px solid #ccc; font-family: monospace; font-size: 14px; }
-            .success { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
-            .error { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
-            .info { border-left-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
-            .added { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
-            .updated { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
-            .deleted { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
-            .failed { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
-            .complete { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); font-weight: bold; }
-            .processing { border-left-color: #8b5cf6; background: rgba(139, 92, 246, 0.1); }
-            .analysis { border-left-color: #6366f1; background: rgba(99, 102, 241, 0.1); }
-            .fetching { border-left-color: #06b6d4; background: rgba(6, 182, 212, 0.1); }
-            .summary { border-left-color: #10b981; background: rgba(16, 185, 129, 0.1); font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <a href="/?password=${password}" class="back">← Back to Dashboard</a>
-          <h1>${pageTitle}</h1>
-          <div class="subtitle">${pageDescription}</div>
-          
-          <button id="syncBtn" onclick="startSync()">
-            Start ${syncMode === 'reset' ? 'Reset & Full' : 'Incremental'} Sync
-          </button>
-          
-          <div id="status" class="status" style="display: none;"></div>
-          
-          <script>
-            let currentEventSource = null;
-            
-            function startSync() {
-              const btn = document.getElementById('syncBtn');
-              const status = document.getElementById('status');
-              
-              btn.disabled = true;
-              btn.textContent = 'Sync Running...';
-              status.style.display = 'block';
-              status.innerHTML = '<div class="message info">🚀 Starting sync...</div>';
-              
-              connectToSync('/sync-stream?password=${password}&mode=${syncMode}&daysBack=30');
-            }
-            
-            function addMessage(message, type = 'info') {
-              const status = document.getElementById('status');
-              const div = document.createElement('div');
-              div.className = 'message ' + type;
-              div.textContent = message;
-              status.appendChild(div);
-              status.scrollTop = status.scrollHeight;
-              
-              const timestamp = new Date().toLocaleTimeString();
-              console.log(\`[\${timestamp}] \${type.toUpperCase()}: \${message}\`);
-            }
-            
-            function connectToSync(url) {
-              if (currentEventSource) {
-                currentEventSource.close();
-              }
-              
-              addMessage('🔗 Connecting to sync stream...', 'info');
-              currentEventSource = new EventSource(url);
-              
-              currentEventSource.onopen = function() {
-                addMessage('✅ Connected to sync stream', 'success');
-              };
-              
-              currentEventSource.onmessage = function(event) {
-                try {
-                  const data = JSON.parse(event.data);
-                  
-                  if (data.message) {
-                    addMessage(data.message, data.type || 'info');
-                  }
-                  
-                  if (data.complete) {
-                    currentEventSource.close();
-                    currentEventSource = null;
-                    document.getElementById('syncBtn').disabled = false;
-                    document.getElementById('syncBtn').textContent = 'Start ${syncMode === 'reset' ? 'Reset & Full' : 'Incremental'} Sync';
-                    
-                    if (data.finalCounts) {
-                      const counts = data.finalCounts;
-                      if (data.mode === 'reset') {
-                        addMessage(\`🎉 SYNC COMPLETE! Created: \${counts.created}, Deleted: \${counts.deleted}, Failed: \${counts.failed}\`, 'complete');
-                      } else {
-                        addMessage(\`🎉 SYNC COMPLETE! Added: \${counts.added}, Updated: \${counts.updated}, Skipped: \${counts.skipped}, Failed: \${counts.failed}\`, 'complete');
-                      }
-                    }
-                  }
-                  
-                } catch (error) {
-                  console.error('Error parsing sync message:', error);
-                  addMessage('❌ Error parsing sync data', 'error');
-                }
-              };
-              
-              currentEventSource.onerror = function(error) {
-                console.error('EventSource error:', error);
-                currentEventSource.close();
-                currentEventSource = null;
-                document.getElementById('syncBtn').disabled = false;
-                document.getElementById('syncBtn').textContent = 'Start ${syncMode === 'reset' ? 'Reset & Full' : 'Incremental'} Sync';
-                addMessage('❌ Connection error - sync interrupted', 'error');
-              };
-            }
-          </script>
-        </body>
-        </html>
-      `);
-      return;
-    }
-    
-    // Dashboard with new sync options
-    if (pathname === '/') {
-      res.setHeader('Content-Type', 'text/html');
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Raindrop/Notion Sync</title>
-          <style>
-            body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-            h1 { font-size: 72px; font-weight: normal; letter-spacing: -0.05em; margin-bottom: 40px; }
-            .count { font-size: 72px; margin-bottom: 20px; }
-            .status { font-size: 72px; margin-bottom: 40px; color: #666; }
-            .actions a { font-size: 72px; display: block; margin: 20px 0; color: #000; text-decoration: none; }
-            .actions a:hover { opacity: 0.7; }
-            .actions a.secondary { color: #e1e1e1; }
-            .actions a.danger { color: #ff4444; }
-            .indicator { width: 100px; height: 20px; margin-bottom: 40px; background: #ff0000; }
-            .indicator.synced { background: #17d827; }
-            .mode-description { font-size: 24px; color: #999; margin-left: 20px; }
-          </style>
-        </head>
-        <body>
-          <div id="indicator" class="indicator"></div>
-          <h1>Raindrop/Notion Sync</h1>
-          <div class="count" id="raindrop">... Raindrop Bookmarks</div>
-          <div class="count" id="notion">... Notion Pages</div>
-          <div class="status" id="status">Loading...</div>
-          
-          <div class="actions">
-            <a href="/sync?password=${password}&mode=incremental">
-              Sync Recent ↻
-              <div class="mode-description">Smart incremental (last 30 days)</div>
-            </a>
-            
-            <a href="/reset-sync?password=${password}" class="danger">
-              Reset & Full Sync
-              <div class="mode-description">Delete all → recreate from Raindrop</div>
-            </a>
-          </div>
-          
-          <script>
-            fetch('/api/counts?password=${password}')
-              .then(r => r.json())
-              .then(data => {
-                document.getElementById('raindrop').textContent = data.raindropTotal.toLocaleString() + ' Raindrop Bookmarks';
-                document.getElementById('notion').textContent = data.notionTotal.toLocaleString() + ' Notion Pages';
-                
-                const diff = Math.abs(data.raindropTotal - data.notionTotal);
-                const synced = diff <= 5;
-                
-                if (synced) {
-                  document.getElementById('indicator').classList.add('synced');
-                  document.getElementById('status').textContent = 'All bookmarks are synchronized';
-                  document.getElementById('status').style.color = '#17d827';
-                } else {
-                  document.getElementById('status').textContent = diff.toLocaleString() + ' bookmarks need synchronization';
-                  document.getElementById('status').style.color = '#ff0000';
-                }
-              })
-              .catch(e => {
-                document.getElementById('status').textContent = 'Error loading status';
-                document.getElementById('status').style.color = '#ff0000';
-                console.error('Count loading error:', e);
-              });
-          </script>
-        </body>
-        </html>
-      `);
-      return;
-    }
-    
-// === CACHE ENDPOINTS ===
+    // === CACHE ENDPOINTS ===
     
     if (pathname === '/api/cache-status') {
       try {
@@ -1529,13 +1185,11 @@ module.exports = async (req, res) => {
         const streamId = Date.now().toString();
         console.log(`🔗 CACHE REQUEST: ${streamId}`);
         
-        // Send initial status
         res.write(`data: ${JSON.stringify({
           message: '📡 Starting Raindrop data fetch for caching...',
           type: 'info'
         })}\n\n`);
         
-        // Check existing cache status
         const cacheStatus = await getCacheStatus();
         if (cacheStatus.exists && cacheStatus.valid) {
           res.write(`data: ${JSON.stringify({
@@ -1549,7 +1203,6 @@ module.exports = async (req, res) => {
           })}\n\n`);
         }
         
-        // Fetch all raindrops
         res.write(`data: ${JSON.stringify({
           message: `📚 Fetching ${limit > 0 ? limit : 'all'} Raindrop bookmarks...`,
           type: 'fetching'
@@ -1564,7 +1217,6 @@ module.exports = async (req, res) => {
           type: 'success'
         })}\n\n`);
         
-        // Write to cache
         res.write(`data: ${JSON.stringify({
           message: '💾 Writing data to cache...',
           type: 'processing'
@@ -1579,7 +1231,6 @@ module.exports = async (req, res) => {
         
         const totalDuration = Math.round((Date.now() - startTime) / 1000);
         
-        // Send completion
         res.write(`data: ${JSON.stringify({
           message: `🎉 Cache refresh complete in ${totalDuration}s!`,
           type: 'complete',
@@ -1633,7 +1284,6 @@ module.exports = async (req, res) => {
       
       console.log(`🔗 NEW CACHED SYNC REQUEST: ${streamId}, mode: ${mode}`);
       
-      // Check if another sync is running
       if (GLOBAL_SYNC_LOCK) {
         const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
         console.log(`🚫 SYNC LOCK ACTIVE - Lock ID: ${SYNC_LOCK_ID}, Duration: ${lockDuration}s`);
@@ -1646,7 +1296,6 @@ module.exports = async (req, res) => {
         return;
       }
       
-      // Check cache before starting
       try {
         const cacheStatus = await getCacheStatus();
         if (!cacheStatus.exists || !cacheStatus.valid) {
@@ -1675,14 +1324,12 @@ module.exports = async (req, res) => {
         return;
       }
       
-      // Set global lock
       GLOBAL_SYNC_LOCK = true;
       SYNC_START_TIME = Date.now();
       SYNC_LOCK_ID = `cached_sync_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       
       console.log(`🔐 SETTING CACHED SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
       
-      // Create new sync process
       currentSync = {
         mode: 'cached-' + mode,
         limit,
@@ -1695,7 +1342,6 @@ module.exports = async (req, res) => {
         cached: true
       };
       
-      // Choose cached sync mode
       let syncPromise;
       if (mode === 'reset' || mode === 'full') {
         syncPromise = performCachedResetAndFullSync(limit);
@@ -1703,7 +1349,6 @@ module.exports = async (req, res) => {
         syncPromise = performCachedSmartIncrementalSync(daysBack);
       }
       
-      // Start cached sync process
       syncPromise
         .then(() => {
           console.log(`✅ Cached sync completed successfully - Lock ID: ${SYNC_LOCK_ID}`);
@@ -1730,7 +1375,6 @@ module.exports = async (req, res) => {
           activeStreams.delete(streamId);
         });
       
-      // Handle client disconnect
       req.on('close', () => {
         activeStreams.delete(streamId);
       });
@@ -1747,44 +1391,551 @@ module.exports = async (req, res) => {
         <html>
         <head>
           <title>Cache Management</title>
-          <style>
-            body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-            h1 { font-size: 72px; font-weight: normal; margin-bottom: 40px; }
-            .subtitle { font-size: 24px; color: #666; margin-bottom: 40px; line-height: 1.4; }
-            button { font-size: 48px; background: none; border: none; cursor: pointer; margin: 20px 0; }
-            button:hover { opacity: 0.7; }
-            button:disabled { opacity: 0.3; cursor: not-allowed; }
-            .back { font-size: 24px; color: #666; text-decoration: none; }
-            .status { background: #f5f5f5; border-radius: 8px; padding: 20px; margin: 20px 0; }
-            .cache-info { font-family: monospace; font-size: 14px; margin: 10px 0; }
-            .success { color: #22c55e; }
-            .warning { color: #f59e0b; }
-            .error { color: #ef4444; }
-            .cache-actions { display: flex; gap: 20px; margin: 40px 0; }
-            .cache-button { font-size: 32px; padding: 10px 20px; border: 2px solid #000; background: white; }
-            .cache-button.danger { color: #ef4444; border-color: #ef4444; }
-            .cache-button.primary { background: #000; color: white; }
-          </style>
+          <link rel="stylesheet" href="/public/styles/design-system.css">
+          <link rel="stylesheet" href="/public/styles/dashboard.css">
+          <link rel="stylesheet" href="/public/styles/components.css">
         </head>
         <body>
-          <a href="/?password=${password}" class="back">← Back to Dashboard</a>
-          <h1>Cache Management</h1>
-          <div class="subtitle">Manage cached Raindrop data for fast syncing</div>
-          
-          <div class="status" id="cache-status">
-            <div class="cache-info">Loading cache status...</div>
+          <div class="container">
+            <main class="dashboard">
+              <div class="status-indicator" id="cache-indicator"></div>
+              <h1 class="dashboard-title text-huge text-primary">Cache Management</h1>
+              
+              <div class="status-message calculating text-medium" id="cache-status">
+                Loading cache status...
+              </div>
+              
+              <div class="dashboard-actions">
+                <button id="refresh-cache-btn" class="action-button primary">
+                  Refresh Cache
+                </button>
+                <button id="clear-cache-btn" class="action-button secondary">
+                  Clear Cache
+                </button>
+                <a href="/?password=${password}" class="action-button secondary">
+                  Back to Dashboard
+                </a>
+              </div>
+              
+              <div class="live-updates" id="status" style="display: none;">
+                <div id="sync-updates"></div>
+              </div>
+            </main>
           </div>
           
-          <div class="cache-actions">
-            <button id="refresh-cache-btn" class="cache-button primary">
-              Refresh Cache
-            </button>
-            <button id="clear-cache-btn" class="cache-button danger">
-              Clear Cache
-            </button>
+          <script>
+            let currentEventSource = null;
+            
+            function startSync() {
+              const btn = document.getElementById('syncBtn');
+              const status = document.getElementById('status');
+              
+              btn.disabled = true;
+              btn.textContent = 'Sync Running...';
+              status.style.display = 'block';
+              document.getElementById('sync-updates').innerHTML = '<div class="sync-update info">Starting cached sync...</div>';
+              
+              connectToSync('/cached-sync-stream?password=${password}&mode=incremental&daysBack=30');
+            }
+            
+            function addMessage(message, type = 'info') {
+              const updates = document.getElementById('sync-updates');
+              const div = document.createElement('div');
+              div.className = 'sync-update ' + type;
+              div.textContent = message;
+              updates.appendChild(div);
+              updates.scrollTop = updates.scrollHeight;
+            }
+            
+            function connectToSync(url) {
+              if (currentEventSource) {
+                currentEventSource.close();
+              }
+              
+              addMessage('Connecting to cached sync stream...', 'info');
+              currentEventSource = new EventSource(url);
+              
+              currentEventSource.onopen = function() {
+                addMessage('Connected to cached sync stream', 'success');
+              };
+              
+              currentEventSource.onmessage = function(event) {
+                try {
+                  const data = JSON.parse(event.data);
+                  
+                  if (data.message) {
+                    addMessage(data.message, data.type || 'info');
+                  }
+                  
+                  if (data.needsCache) {
+                    addMessage('Go to Cache Management to refresh cache first', 'warning');
+                  }
+                  
+                  if (data.complete) {
+                    currentEventSource.close();
+                    currentEventSource = null;
+                    document.getElementById('syncBtn').disabled = false;
+                    document.getElementById('syncBtn').textContent = 'Start CACHED Incremental Sync';
+                    
+                    if (data.finalCounts) {
+                      const counts = data.finalCounts;
+                      addMessage('CACHED SYNC COMPLETE! Added: ' + counts.added + ', Updated: ' + counts.updated + ', Skipped: ' + counts.skipped + ', Failed: ' + counts.failed, 'complete');
+                    }
+                  }
+                } catch (error) {
+                  console.error('Error parsing cached sync message:', error);
+                  addMessage('Error parsing sync data', 'error');
+                }
+              };
+              
+              currentEventSource.onerror = function(error) {
+                console.error('EventSource error:', error);
+                currentEventSource.close();
+                currentEventSource = null;
+                document.getElementById('syncBtn').disabled = false;
+                document.getElementById('syncBtn').textContent = 'Start CACHED Incremental Sync';
+                addMessage('Connection error - cached sync interrupted', 'error');
+              };
+            }
+            
+            document.getElementById('syncBtn').addEventListener('click', startSync);
+          </script>
+        </body>
+        </html>
+      `);
+      return;
+    }
+    
+    if (pathname === '/sync-all-cached') {
+      res.setHeader('Content-Type', 'text/html');
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>CACHED Full Sync</title>
+          <link rel="stylesheet" href="/public/styles/design-system.css">
+          <link rel="stylesheet" href="/public/styles/sync.css">
+          <link rel="stylesheet" href="/public/styles/components.css">
+        </head>
+        <body>
+          <div class="container">
+            <main class="sync-page">
+              <div class="sync-status-indicator not-synced" id="sync-indicator"></div>
+              <h1 class="text-huge text-primary">CACHED Reset & Full Sync</h1>
+              <p class="text-medium">Lightning fast full sync using cached data</p>
+              
+              <div class="dashboard-actions">
+                <button id="syncBtn" class="action-button primary">
+                  Start CACHED Reset & Full Sync
+                </button>
+                <a href="/?password=${password}" class="action-button secondary">
+                  Back to Dashboard
+                </a>
+              </div>
+              
+              <div class="live-updates" id="status" style="display: none;">
+                <div id="sync-updates"></div>
+              </div>
+            </main>
           </div>
           
-          <div id="refresh-status" class="status" style="display: none;"></div>
+          <script>
+            let currentEventSource = null;
+            
+            function startSync() {
+              const btn = document.getElementById('syncBtn');
+              const status = document.getElementById('status');
+              
+              btn.disabled = true;
+              btn.textContent = 'Sync Running...';
+              status.style.display = 'block';
+              document.getElementById('sync-updates').innerHTML = '<div class="sync-update info">Starting cached full sync...</div>';
+              
+              connectToSync('/cached-sync-stream?password=${password}&mode=reset&daysBack=30');
+            }
+            
+            function addMessage(message, type = 'info') {
+              const updates = document.getElementById('sync-updates');
+              const div = document.createElement('div');
+              div.className = 'sync-update ' + type;
+              div.textContent = message;
+              updates.appendChild(div);
+              updates.scrollTop = updates.scrollHeight;
+            }
+            
+            function connectToSync(url) {
+              if (currentEventSource) {
+                currentEventSource.close();
+              }
+              
+              addMessage('Connecting to cached sync stream...', 'info');
+              currentEventSource = new EventSource(url);
+              
+              currentEventSource.onopen = function() {
+                addMessage('Connected to cached sync stream', 'success');
+              };
+              
+              currentEventSource.onmessage = function(event) {
+                try {
+                  const data = JSON.parse(event.data);
+                  
+                  if (data.message) {
+                    addMessage(data.message, data.type || 'info');
+                  }
+                  
+                  if (data.needsCache) {
+                    addMessage('Go to Cache Management to refresh cache first', 'warning');
+                  }
+                  
+                  if (data.complete) {
+                    currentEventSource.close();
+                    currentEventSource = null;
+                    document.getElementById('syncBtn').disabled = false;
+                    document.getElementById('syncBtn').textContent = 'Start CACHED Reset & Full Sync';
+                    
+                    if (data.finalCounts) {
+                      const counts = data.finalCounts;
+                      addMessage('CACHED SYNC COMPLETE! Created: ' + counts.created + ', Deleted: ' + counts.deleted + ', Failed: ' + counts.failed, 'complete');
+                    }
+                  }
+                } catch (error) {
+                  console.error('Error parsing cached sync message:', error);
+                  addMessage('Error parsing sync data', 'error');
+                }
+              };
+              
+              currentEventSource.onerror = function(error) {
+                console.error('EventSource error:', error);
+                currentEventSource.close();
+                currentEventSource = null;
+                document.getElementById('syncBtn').disabled = false;
+                document.getElementById('syncBtn').textContent = 'Start CACHED Reset & Full Sync';
+                addMessage('Connection error - cached sync interrupted', 'error');
+              };
+            }
+            
+            document.getElementById('syncBtn').addEventListener('click', startSync);
+          </script>
+        </body>
+        </html>
+      `);
+      return;
+    }
+    
+    if (pathname === '/sync-stream') {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      
+      const streamId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      activeStreams.set(streamId, res);
+      
+      console.log(`🔗 NEW SYNC REQUEST: ${streamId}, mode: ${mode}`);
+      
+      if (GLOBAL_SYNC_LOCK) {
+        const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
+        console.log(`🚫 SYNC LOCK ACTIVE - Lock ID: ${SYNC_LOCK_ID}, Duration: ${lockDuration}s`);
+        
+        res.write(`data: ${JSON.stringify({
+          message: `⏸️ Sync already running (${lockDuration}s elapsed). Please wait...`,
+          type: 'waiting',
+          lockInfo: { locked: true, lockId: SYNC_LOCK_ID, duration: lockDuration }
+        })}\n\n`);
+        return;
+      }
+      
+      GLOBAL_SYNC_LOCK = true;
+      SYNC_START_TIME = Date.now();
+      SYNC_LOCK_ID = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      
+      console.log(`🔐 SETTING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
+      
+      currentSync = {
+        mode,
+        limit,
+        daysBack,
+        isRunning: true,
+        lockId: SYNC_LOCK_ID,
+        startTime: Date.now(),
+        counts: { added: 0, updated: 0, skipped: 0, deleted: 0, failed: 0 },
+        completed: false
+      };
+      
+      let syncPromise;
+      if (mode === 'reset' || mode === 'full') {
+        syncPromise = performResetAndFullSync(limit);
+      } else {
+        syncPromise = performSmartIncrementalSync(daysBack);
+      }
+      
+      syncPromise
+        .then(() => {
+          console.log(`✅ Sync completed successfully - Lock ID: ${SYNC_LOCK_ID}`);
+        })
+        .catch(error => {
+          console.error(`❌ SYNC ERROR - Lock ID: ${SYNC_LOCK_ID}:`, error);
+          broadcastSSEData({
+            message: `Sync failed: ${error.message}`,
+            type: 'failed',
+            complete: true
+          });
+        })
+        .finally(() => {
+          console.log(`🔓 RELEASING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
+          GLOBAL_SYNC_LOCK = false;
+          SYNC_START_TIME = null;
+          SYNC_LOCK_ID = null;
+          
+          if (currentSync) {
+            currentSync.isRunning = false;
+            currentSync = null;
+          }
+          
+          activeStreams.delete(streamId);
+        });
+      
+      req.on('close', () => {
+        activeStreams.delete(streamId);
+      });
+      
+      return;
+    }
+    
+    // Sync pages with mode selection
+    if (pathname === '/sync' || pathname === '/sync-all' || pathname === '/reset-sync') {
+      let syncMode, pageTitle, pageDescription;
+      
+      if (pathname === '/reset-sync') {
+        syncMode = 'reset';
+        pageTitle = 'Reset & Full Sync';
+        pageDescription = 'Delete all Notion pages and recreate from Raindrop';
+      } else if (pathname === '/sync-all') {
+        syncMode = 'reset';
+        pageTitle = 'Reset & Full Sync';
+        pageDescription = 'Complete database reset and recreation';
+      } else {
+        syncMode = 'incremental';
+        pageTitle = 'Smart Incremental Sync';
+        pageDescription = 'Sync only recent bookmarks (last 30 days)';
+      }
+      
+      res.setHeader('Content-Type', 'text/html');
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>${pageTitle}</title>
+          <link rel="stylesheet" href="/public/styles/design-system.css">
+          <link rel="stylesheet" href="/public/styles/sync.css">
+          <link rel="stylesheet" href="/public/styles/components.css">
+        </head>
+        <body>
+          <div class="container">
+            <main class="sync-page">
+              <div class="sync-status-indicator not-synced" id="sync-indicator"></div>
+              <h1 class="text-huge text-primary">${pageTitle}</h1>
+              <p class="text-medium">${pageDescription}</p>
+              
+              <div class="dashboard-actions">
+                <button id="syncBtn" class="action-button primary">
+                  Start ${syncMode === 'reset' ? 'Reset & Full' : 'Incremental'} Sync
+                </button>
+                <a href="/?password=${password}" class="action-button secondary">
+                  Back to Dashboard
+                </a>
+              </div>
+              
+              <div class="live-updates" id="status" style="display: none;">
+                <div id="sync-updates"></div>
+              </div>
+            </main>
+          </div>
+          
+          <script>
+            let currentEventSource = null;
+            
+            function startSync() {
+              const btn = document.getElementById('syncBtn');
+              const status = document.getElementById('status');
+              
+              btn.disabled = true;
+              btn.textContent = 'Sync Running...';
+              status.style.display = 'block';
+              document.getElementById('sync-updates').innerHTML = '<div class="sync-update info">Starting sync...</div>';
+              
+              connectToSync('/sync-stream?password=${password}&mode=${syncMode}&daysBack=30');
+            }
+            
+            function addMessage(message, type = 'info') {
+              const updates = document.getElementById('sync-updates');
+              const div = document.createElement('div');
+              div.className = 'sync-update ' + type;
+              div.textContent = message;
+              updates.appendChild(div);
+              updates.scrollTop = updates.scrollHeight;
+            }
+            
+            function connectToSync(url) {
+              if (currentEventSource) {
+                currentEventSource.close();
+              }
+              
+              addMessage('Connecting to sync stream...', 'info');
+              currentEventSource = new EventSource(url);
+              
+              currentEventSource.onopen = function() {
+                addMessage('Connected to sync stream', 'success');
+              };
+              
+              currentEventSource.onmessage = function(event) {
+                try {
+                  const data = JSON.parse(event.data);
+                  
+                  if (data.message) {
+                    addMessage(data.message, data.type || 'info');
+                  }
+                  
+                  if (data.complete) {
+                    currentEventSource.close();
+                    currentEventSource = null;
+                    document.getElementById('syncBtn').disabled = false;
+                    document.getElementById('syncBtn').textContent = 'Start ${syncMode === 'reset' ? 'Reset & Full' : 'Incremental'} Sync';
+                    
+                    if (data.finalCounts) {
+                      const counts = data.finalCounts;
+                      if (data.mode === 'reset') {
+                        addMessage('SYNC COMPLETE! Created: ' + counts.created + ', Deleted: ' + counts.deleted + ', Failed: ' + counts.failed, 'complete');
+                      } else {
+                        addMessage('SYNC COMPLETE! Added: ' + counts.added + ', Updated: ' + counts.updated + ', Skipped: ' + counts.skipped + ', Failed: ' + counts.failed, 'complete');
+                      }
+                    }
+                  }
+                } catch (error) {
+                  console.error('Error parsing sync message:', error);
+                  addMessage('Error parsing sync data', 'error');
+                }
+              };
+              
+              currentEventSource.onerror = function(error) {
+                console.error('EventSource error:', error);
+                currentEventSource.close();
+                currentEventSource = null;
+                document.getElementById('syncBtn').disabled = false;
+                document.getElementById('syncBtn').textContent = 'Start ${syncMode === 'reset' ? 'Reset & Full' : 'Incremental'} Sync';
+                addMessage('Connection error - sync interrupted', 'error');
+              };
+            }
+            
+            document.getElementById('syncBtn').addEventListener('click', startSync);
+          </script>
+        </body>
+        </html>
+      `);
+      return;
+    }
+    
+    // Dashboard with new sync options
+    if (pathname === '/') {
+      res.setHeader('Content-Type', 'text/html');
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Raindrop/Notion Sync</title>
+          <link rel="stylesheet" href="/public/styles/design-system.css">
+          <link rel="stylesheet" href="/public/styles/dashboard.css">
+          <link rel="stylesheet" href="/public/styles/components.css">
+        </head>
+        <body>
+          <div class="container">
+            <main class="dashboard">
+              <div class="status-indicator" id="indicator"></div>
+              <h1 class="dashboard-title text-huge text-primary">Raindrop/Notion Sync</h1>
+              <div class="count-display" id="raindrop">... Raindrop Bookmarks</div>
+              <div class="count-display" id="notion">... Notion Pages</div>
+              <div class="status-message calculating text-huge" id="status">Loading...</div>
+              
+              <div class="dashboard-actions">
+                <a href="/sync?password=${password}&mode=incremental" class="action-button primary">
+                  Sync Recent ↻
+                </a>
+                <a href="/reset-sync?password=${password}" class="action-button secondary">
+                  Reset / FullSync
+                </a>
+                <a href="/sync-cached?password=${password}&mode=incremental" class="action-button cached" id="cached-sync-new">
+                  CACHED Sync Recent ↻ [FAST]
+                </a>
+                <a href="/sync-all-cached?password=${password}" class="action-button cached" id="cached-full-sync">
+                  CACHED Reset & Full Sync [FAST]
+                </a>
+                <a href="/cache?password=${password}" class="action-button secondary">
+                  Manage Cache
+                </a>
+              </div>
+            </main>
+          </div>
+          
+          <script>
+            Promise.all([
+              fetch('/api/counts?password=${password}').then(r => r.json()),
+              fetch('/api/cache-status?password=${password}').then(r => r.json())
+            ]).then(([countsData, cacheData]) => {
+              document.getElementById('raindrop').textContent = countsData.raindropTotal.toLocaleString() + ' Raindrop Bookmarks';
+              document.getElementById('notion').textContent = countsData.notionTotal.toLocaleString() + ' Notion Pages';
+              
+              const diff = Math.abs(countsData.raindropTotal - countsData.notionTotal);
+              const synced = diff <= 5;
+              
+              if (synced) {
+                document.getElementById('indicator').classList.add('synced');
+                document.getElementById('status').textContent = 'All bookmarks are synchronized';
+                document.getElementById('status').style.color = '#17d827';
+              } else {
+                document.getElementById('status').textContent = diff.toLocaleString() + ' bookmarks need synchronization';
+                document.getElementById('status').style.color = '#ff0000';
+              }
+              
+              const cachedButtons = document.querySelectorAll('.action-button.cached');
+              if (cacheData.success && cacheData.cache.exists && cacheData.cache.valid) {
+                cachedButtons.forEach(btn => {
+                  btn.style.opacity = '1';
+                  btn.style.pointerEvents = 'auto';
+                });
+              } else {
+                cachedButtons.forEach(btn => {
+                  btn.style.opacity = '0.5';
+                  btn.style.pointerEvents = 'none';
+                  btn.onclick = (e) => {
+                    e.preventDefault();
+                    alert('Cache not available. Please refresh cache first.');
+                  };
+                });
+              }
+            }).catch(e => {
+              document.getElementById('status').textContent = 'Error loading status';
+              document.getElementById('status').style.color = '#ff0000';
+              console.error('Loading error:', e);
+            });
+          </script>
+        </body>
+        </html>
+      `);
+      return;
+    }
+    
+    res.status(404).json({ error: 'Not found' });
+    
+  } catch (error) {
+    console.error('Function error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+                </a>
+              </div>
+              
+              <div class="status-message calculating text-small" id="refresh-status" style="display: none;"></div>
+            </main>
+          </div>
           
           <script>
             let currentEventSource = null;
@@ -1795,32 +1946,28 @@ module.exports = async (req, res) => {
                 const data = await response.json();
                 
                 const statusDiv = document.getElementById('cache-status');
+                const indicator = document.getElementById('cache-indicator');
                 
                 if (data.success && data.cache.exists) {
                   const cache = data.cache;
-                  const statusClass = cache.valid ? 'success' : 'warning';
                   
-                  statusDiv.innerHTML = \`
-                    <div class="cache-info \${statusClass}">
-                      <strong>Status:</strong> \${cache.message}<br>
-                      <strong>Items:</strong> \${cache.metadata.itemCount.toLocaleString()}<br>
-                      <strong>Size:</strong> \${cache.metadata.sizeKB}KB<br>
-                      <strong>Age:</strong> \${cache.metadata.ageMinutes}m (\${cache.metadata.ageHours}h)<br>
-                      <strong>Created:</strong> \${new Date(cache.metadata.cachedAt).toLocaleString()}
-                    </div>
-                  \`;
+                  if (cache.valid) {
+                    statusDiv.textContent = 'Cache Status: ' + cache.message;
+                    statusDiv.className = 'status-message synced text-medium';
+                    indicator.className = 'status-indicator synced';
+                  } else {
+                    statusDiv.textContent = 'Cache Status: ' + cache.message;
+                    statusDiv.className = 'status-message not-synced text-medium';
+                    indicator.className = 'status-indicator not-synced';
+                  }
                 } else {
-                  statusDiv.innerHTML = \`
-                    <div class="cache-info error">
-                      <strong>Status:</strong> \${data.cache.message || 'No cache found'}<br>
-                      <strong>Action:</strong> Click "Refresh Cache" to create cache
-                    </div>
-                  \`;
+                  statusDiv.textContent = 'Cache Status: No cache found';
+                  statusDiv.className = 'status-message not-synced text-medium';
+                  indicator.className = 'status-indicator not-synced';
                 }
               } catch (error) {
-                document.getElementById('cache-status').innerHTML = \`
-                  <div class="cache-info error">Error loading cache status: \${error.message}</div>
-                \`;
+                document.getElementById('cache-status').textContent = 'Error loading cache status';
+                document.getElementById('cache-indicator').className = 'status-indicator not-synced';
               }
             }
             
@@ -1831,7 +1978,8 @@ module.exports = async (req, res) => {
               btn.disabled = true;
               btn.textContent = 'Refreshing...';
               statusDiv.style.display = 'block';
-              statusDiv.innerHTML = '<div class="cache-info">🚀 Starting cache refresh...</div>';
+              statusDiv.textContent = 'Starting cache refresh...';
+              statusDiv.className = 'status-message calculating text-small';
               
               if (currentEventSource) {
                 currentEventSource.close();
@@ -1842,22 +1990,19 @@ module.exports = async (req, res) => {
               currentEventSource.onmessage = function(event) {
                 try {
                   const data = JSON.parse(event.data);
-                  
-                  statusDiv.innerHTML += \`<div class="cache-info">\${data.message}</div>\`;
-                  statusDiv.scrollTop = statusDiv.scrollHeight;
+                  statusDiv.textContent = data.message;
                   
                   if (data.complete) {
                     currentEventSource.close();
                     currentEventSource = null;
                     btn.disabled = false;
                     btn.textContent = 'Refresh Cache';
+                    statusDiv.className = 'status-message synced text-small';
                     
-                    // Reload cache status
                     setTimeout(() => {
                       loadCacheStatus();
                     }, 1000);
                   }
-                  
                 } catch (error) {
                   console.error('Error parsing cache message:', error);
                 }
@@ -1869,12 +2014,13 @@ module.exports = async (req, res) => {
                 currentEventSource = null;
                 btn.disabled = false;
                 btn.textContent = 'Refresh Cache';
-                statusDiv.innerHTML += '<div class="cache-info error">❌ Cache refresh failed</div>';
+                statusDiv.textContent = 'Cache refresh failed';
+                statusDiv.className = 'status-message not-synced text-small';
               };
             }
             
             async function clearCache() {
-              if (!confirm('Are you sure you want to clear the cache? This will require refreshing before the next sync.')) {
+              if (!confirm('Are you sure you want to clear the cache?')) {
                 return;
               }
               
@@ -1883,7 +2029,6 @@ module.exports = async (req, res) => {
                 const data = await response.json();
                 
                 if (data.success) {
-                  alert('Cache cleared successfully');
                   loadCacheStatus();
                 } else {
                   alert('Failed to clear cache: ' + data.error);
@@ -1896,7 +2041,6 @@ module.exports = async (req, res) => {
             document.getElementById('refresh-cache-btn').addEventListener('click', refreshCache);
             document.getElementById('clear-cache-btn').addEventListener('click', clearCache);
             
-            // Load initial status
             loadCacheStatus();
           </script>
         </body>
@@ -1912,127 +2056,20 @@ module.exports = async (req, res) => {
         <html>
         <head>
           <title>CACHED Incremental Sync</title>
-          <style>
-            body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-            h1 { font-size: 72px; font-weight: normal; margin-bottom: 40px; }
-            .subtitle { font-size: 24px; color: #666; margin-bottom: 40px; line-height: 1.4; }
-            .cache-badge { background: #22c55e; color: white; padding: 8px 16px; border-radius: 20px; font-size: 16px; margin-left: 20px; }
-            button { font-size: 48px; background: none; border: none; cursor: pointer; margin: 20px 0; }
-            button:hover { opacity: 0.7; }
-            button:disabled { opacity: 0.3; cursor: not-allowed; }
-            .back { font-size: 24px; color: #666; text-decoration: none; }
-            .status { background: #f5f5f5; border-radius: 8px; padding: 20px; margin: 20px 0; max-height: 400px; overflow-y: auto; }
-            .message { padding: 8px; margin: 4px 0; border-left: 3px solid #ccc; font-family: monospace; font-size: 14px; }
-            .success { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
-            .error { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
-            .info { border-left-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
-            .warning { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
-            .complete { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); font-weight: bold; }
-          </style>
+          <link rel="stylesheet" href="/public/styles/design-system.css">
+          <link rel="stylesheet" href="/public/styles/sync.css">
+          <link rel="stylesheet" href="/public/styles/components.css">
         </head>
         <body>
-          <a href="/?password=${password}" class="back">← Back to Dashboard</a>
-          <h1>CACHED Incremental Sync <span class="cache-badge">⚡ FAST</span></h1>
-          <div class="subtitle">Sync recent bookmarks using cached data (lightning fast!)</div>
-          
-          <div class="subtitle">
-            <strong>🚀 Speed Benefits:</strong> Uses pre-cached data instead of 1000+ API calls to Raindrop!<br>
-            <strong>⏱️ No Timeouts:</strong> Completes in under 10 seconds on Vercel<br>
-            <strong>💚 Same Results:</strong> Identical sync quality, just much faster
-          </div>
-          
-          <button id="syncBtn" onclick="startSync()">
-            Start CACHED Incremental Sync
-          </button>
-          
-          <div id="status" class="status" style="display: none;"></div>
-          
-          <script>
-            let currentEventSource = null;
-            
-            function startSync() {
-              const btn = document.getElementById('syncBtn');
-              const status = document.getElementById('status');
+          <div class="container">
+            <main class="sync-page">
+              <div class="sync-status-indicator not-synced" id="sync-indicator"></div>
+              <h1 class="text-huge text-primary">CACHED Incremental Sync</h1>
+              <p class="text-medium">Lightning fast sync using cached data</p>
               
-              btn.disabled = true;
-              btn.textContent = 'Sync Running...';
-              status.style.display = 'block';
-              status.innerHTML = '<div class="message info">🚀 Starting cached sync...</div>';
-              
-              connectToSync('/cached-sync-stream?password=${password}&mode=incremental&daysBack=30');
-            }
-            
-            function addMessage(message, type = 'info') {
-              const status = document.getElementById('status');
-              const div = document.createElement('div');
-              div.className = 'message ' + type;
-              div.textContent = message;
-              status.appendChild(div);
-              status.scrollTop = status.scrollHeight;
-            }
-            
-            function connectToSync(url) {
-              if (currentEventSource) {
-                currentEventSource.close();
-              }
-              
-              addMessage('🔗 Connecting to cached sync stream...', 'info');
-              currentEventSource = new EventSource(url);
-              
-              currentEventSource.onopen = function() {
-                addMessage('✅ Connected to cached sync stream', 'success');
-              };
-              
-              currentEventSource.onmessage = function(event) {
-                try {
-                  const data = JSON.parse(event.data);
-                  
-                  if (data.message) {
-                    addMessage(data.message, data.type || 'info');
-                  }
-                  
-                  if (data.needsCache) {
-                    addMessage('⚠️ Go to /cache to refresh cache first', 'warning');
-                  }
-                  
-                  if (data.complete) {
-                    currentEventSource.close();
-                    currentEventSource = null;
-                    document.getElementById('syncBtn').disabled = false;
-                    document.getElementById('syncBtn').textContent = 'Start CACHED Incremental Sync';
-                    
-                    if (data.finalCounts) {
-                      const counts = data.finalCounts;
-                      addMessage(\`🎉 CACHED SYNC COMPLETE! Added: \${counts.added}, Updated: \${counts.updated}, Skipped: \${counts.skipped}, Failed: \${counts.failed}\`, 'complete');
-                    }
-                  }
-                  
-                } catch (error) {
-                  console.error('Error parsing cached sync message:', error);
-                  addMessage('❌ Error parsing sync data', 'error');
-                }
-              };
-              
-              currentEventSource.onerror = function(error) {
-                console.error('EventSource error:', error);
-                currentEventSource.close();
-                currentEventSource = null;
-                document.getElementById('syncBtn').disabled = false;
-                document.getElementById('syncBtn').textContent = 'Start CACHED Incremental Sync';
-                addMessage('❌ Connection error - cached sync interrupted', 'error');
-              };
-            }
-          </script>
-        </body>
-        </html>
-      `);
-      return;
-    }
-
-    res.status(404).json({ error: 'Not found' });
-    
-  } catch (error) {
-    console.error('Function error:', error);
-    res.status(500).json({ error: error.message });
-  }
-};
+              <div class="dashboard-actions">
+                <button id="syncBtn" class="action-button primary">
+                  Start CACHED Incremental Sync
+                </button>
+                <a href="/?password=${password}" class="action-button secondary">
+                  Back to Dashboard
