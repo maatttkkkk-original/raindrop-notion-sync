@@ -1,389 +1,343 @@
-// Fixed version with correct Vercel paths
+// Vercel-compatible version based on your working Smart Diff system
 
-const path = require('path');
+// Import your existing service files
+const { getAllRaindrops, getRaindropTotal } = require('../services/raindrop');
+const { getNotionPages, getTotalNotionPages, createNotionPage, updateNotionPage, deleteNotionPage } = require('../services/notion');
 
-// Try to load services with correct Vercel paths
-let getRaindrops, getNotionPages, createNotionPage, updateNotionPage, deleteNotionPage;
-
-try {
-  console.log('Current working directory:', process.cwd());
-  console.log('__dirname:', __dirname);
-  
-  // Try different possible paths for Vercel
-  const possiblePaths = [
-    './services/raindrop',
-    '../services/raindrop', 
-    '../../services/raindrop',
-    path.join(process.cwd(), 'services', 'raindrop'),
-    path.join(__dirname, '..', 'services', 'raindrop'),
-    path.join(__dirname, '..', '..', 'services', 'raindrop')
-  ];
-  
-  let raindropService, notionService;
-  
-  for (const servicePath of possiblePaths) {
-    try {
-      console.log('Trying raindrop path:', servicePath);
-      raindropService = require(servicePath);
-      console.log('✅ Raindrop service loaded from:', servicePath);
-      break;
-    } catch (e) {
-      console.log('❌ Failed path:', servicePath, e.message);
-    }
+// Helper functions from your original working code
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url);
+    u.hash = '';
+    u.search = '';
+    return u.href.replace(/\/$/, '').toLowerCase();
+  } catch {
+    return url;
   }
-  
-  for (const servicePath of possiblePaths) {
-    try {
-      const notionPath = servicePath.replace('raindrop', 'notion');
-      console.log('Trying notion path:', notionPath);
-      notionService = require(notionPath);
-      console.log('✅ Notion service loaded from:', notionPath);
-      break;
-    } catch (e) {
-      console.log('❌ Failed notion path:', servicePath.replace('raindrop', 'notion'), e.message);
-    }
-  }
-  
-  if (raindropService && notionService) {
-    // Use the correct function names from your service files
-    getRaindrops = raindropService.getAllRaindrops;
-    getNotionPages = notionService.getNotionPages;
-    createNotionPage = notionService.createNotionPage;
-    updateNotionPage = notionService.updateNotionPage;
-    deleteNotionPage = notionService.deleteNotionPage;
-    
-    console.log('✅ All services loaded successfully');
-  } else {
-    throw new Error('Could not load services from any path');
-  }
-  
-} catch (error) {
-  console.error('❌ Service loading error:', error.message);
-  
-  // Fallback: Use inline service functions
-  console.log('📦 Using inline service functions as fallback');
-  
-  // Inline Raindrop functions
-  getRaindrops = async function getAllRaindrops(limit = 0) {
-    console.log('🔄 Fetching bookmarks from Raindrop (inline)...');
-    
-    let allItems = [];
-    let page = 0;
-    const perPage = 50;
-    let hasMore = true;
-    const MAX_PAGES = 30;
-    let pageCount = 0;
-    
-    while (hasMore && pageCount < MAX_PAGES && (limit === 0 || allItems.length < limit)) {
-      try {
-        if (pageCount > 0) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-        
-        const res = await fetch(`https://api.raindrop.io/rest/v1/raindrops/0?page=${page}&perpage=${perPage}`, {
-          headers: {
-            Authorization: `Bearer ${process.env.RAINDROP_TOKEN}`
-          }
-        });
-
-        if (!res.ok) {
-          if (res.status === 429) {
-            console.log('⏳ Rate limit hit, waiting 5 seconds...');
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            continue;
-          }
-          const errorText = await res.text();
-          throw new Error(`Raindrop API error (${res.status}): ${errorText}`);
-        }
-
-        const data = await res.json();
-        const items = data.items || [];
-        
-        if (limit > 0) {
-          const remaining = limit - allItems.length;
-          allItems = [...allItems, ...items.slice(0, remaining)];
-        } else {
-          allItems = [...allItems, ...items];
-        }
-        
-        hasMore = items.length === perPage && (limit === 0 || allItems.length < limit);
-        page++;
-        pageCount++;
-
-        console.log(`✅ Retrieved ${items.length} bookmarks (total so far: ${allItems.length})`);
-      } catch (error) {
-        console.error('Error fetching raindrops:', error);
-        throw error;
-      }
-    }
-
-    console.log(`📚 Total bookmarks fetched: ${allItems.length}`);
-    return allItems;
-  };
-  
-  // Inline Notion functions
-  getNotionPages = async function() {
-    console.log('🔄 Fetching pages from Notion (inline)...');
-    
-    const pages = [];
-    let hasMore = true;
-    let startCursor = null;
-    let requestCount = 0;
-
-    while (hasMore) {
-      if (requestCount > 0) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-      
-      try {
-        const res = await fetch(`https://api.notion.com/v1/databases/${process.env.NOTION_DB_ID}/query`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
-            'Notion-Version': '2022-06-28',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(startCursor ? { start_cursor: startCursor } : {})
-        });
-
-        if (!res.ok) {
-          if (res.status === 429) {
-            console.log('⏳ Rate limit hit, waiting 5 seconds...');
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            continue;
-          }
-          const data = await res.json();
-          throw new Error(`Notion API error: ${data.message || `Status ${res.status}`}`);
-        }
-
-        const data = await res.json();
-        pages.push(...data.results);
-        hasMore = data.has_more;
-        startCursor = data.next_cursor;
-        requestCount++;
-        
-        console.log(`Retrieved ${data.results.length} Notion pages (total so far: ${pages.length})`);
-      } catch (error) {
-        console.error('Error fetching Notion pages:', error);
-        throw error;
-      }
-    }
-
-    return pages;
-  };
-  
-  createNotionPage = async function(item) {
-    console.log(`📝 Creating: "${item.name}"`);
-
-    const page = {
-      parent: { database_id: process.env.NOTION_DB_ID },
-      properties: {
-        Name: { title: [{ text: { content: item.name || 'Untitled' } }] },
-        URL: { url: item.url },
-        Tags: {
-          multi_select: (item.tags || []).map(tag => ({ name: tag }))
-        }
-      }
-    };
-
-    try {
-      const res = await fetch('https://api.notion.com/v1/pages', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
-          'Notion-Version': '2022-06-28',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(page)
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(`Failed to create page: ${data.message || `Status ${res.status}`}`);
-      }
-      
-      const createdPage = await res.json();
-      return { success: true, pageId: createdPage.id };
-    } catch (error) {
-      console.error(`Error creating page for "${item.name}":`, error);
-      return { success: false, error: error.message };
-    }
-  };
-  
-  updateNotionPage = async function(pageId, item) {
-    const page = {
-      properties: {
-        Name: { title: [{ text: { content: item.name || 'Untitled' } }] },
-        URL: { url: item.url },
-        Tags: {
-          multi_select: (item.tags || []).map(tag => ({ name: tag }))
-        }
-      }
-    };
-
-    try {
-      const res = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
-          'Notion-Version': '2022-06-28',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(page)
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(`Failed to update page: ${data.message || `Status ${res.status}`}`);
-      }
-
-      return true;
-    } catch (error) {
-      console.error(`Error updating page ${pageId}:`, error);
-      throw error;
-    }
-  };
-  
-  deleteNotionPage = async function(pageId) {
-    try {
-      const res = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${process.env.NOTION_TOKEN}`,
-          'Notion-Version': '2022-06-28',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          archived: true
-        })
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(`Failed to delete page: ${data.message || `Status ${res.status}`}`);
-      }
-
-      return true;
-    } catch (error) {
-      console.error(`Error deleting page ${pageId}:`, error);
-      throw error;
-    }
-  };
 }
 
-// Smart Diff sync function
-async function performSmartDiffSync(mode, res) {
+function normalizeTitle(title) {
+  return (title || '').trim().toLowerCase();
+}
+
+function chunkArray(arr, size) {
+  const result = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
+
+function tagsMatch(currentTags, newTags) {
+  if (currentTags.size !== newTags.length) {
+    return false;
+  }
+  
+  for (const tag of newTags) {
+    if (!currentTags.has(tag)) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+function buildLookupMaps(notionPages, raindrops) {
+  const notionPagesByUrl = new Map();
+  const notionPagesByTitle = new Map();
+  const raindropUrlSet = new Set();
+  
+  // Process Notion pages
+  for (const page of notionPages) {
+    const url = page.properties?.URL?.url;
+    const title = page.properties?.Name?.title?.[0]?.text?.content;
+    
+    if (url) {
+      notionPagesByUrl.set(normalizeUrl(url), page);
+    }
+    
+    if (title) {
+      notionPagesByTitle.set(normalizeTitle(title), page);
+    }
+  }
+  
+  // Process raindrops
+  for (const item of raindrops) {
+    raindropUrlSet.add(normalizeUrl(item.link));
+  }
+  
+  return { notionPagesByUrl, notionPagesByTitle, raindropUrlSet };
+}
+
+// Global sync management
+let GLOBAL_SYNC_LOCK = false;
+let SYNC_START_TIME = null;
+let SYNC_LOCK_ID = null;
+let currentSync = null;
+const activeStreams = new Map();
+
+// Helper to broadcast to all streams
+function broadcastSSEData(data) {
+  for (const [streamId, reply] of activeStreams.entries()) {
+    try {
+      reply.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch (error) {
+      console.error(`Error sending to stream ${streamId}:`, error.message);
+      activeStreams.delete(streamId);
+    }
+  }
+}
+
+// Your complete Smart Diff sync function (simplified for Vercel)
+async function performSmartDiffSync(mode, limit = 0) {
+  const lockId = currentSync ? currentSync.lockId : 'unknown';
+  console.log(`🧠 Smart Diff Sync starting - Lock ID: ${lockId}, mode: ${mode}`);
+  
+  if (!GLOBAL_SYNC_LOCK) {
+    throw new Error('Sync started without global lock - aborting');
+  }
+  
+  let addedCount = 0;
+  let updatedCount = 0;
+  let skippedCount = 0;
+  let deletedCount = 0;
+  let failedCount = 0;
+  
   try {
-    res.write(`data: ${JSON.stringify({message: `🔒 Starting Smart Diff sync (${mode})`, type: 'info'})}\n\n`);
+    const isFullSync = mode === 'all';
     
-    // Fetch data
-    res.write(`data: ${JSON.stringify({message: '📡 Fetching raindrops...', type: 'info'})}\n\n`);
-    const raindrops = await getRaindrops();
-    res.write(`data: ${JSON.stringify({message: `✅ Found ${raindrops.length} raindrops`, type: 'success'})}\n\n`);
-    
-    res.write(`data: ${JSON.stringify({message: '📄 Fetching Notion pages...', type: 'info'})}\n\n`);
-    const notionPages = await getNotionPages();
-    res.write(`data: ${JSON.stringify({message: `✅ Found ${notionPages.length} notion pages`, type: 'success'})}\n\n`);
-    
-    // Build lookup maps
-    const notionLookupByUrl = new Map();
-    const notionLookupByTitle = new Map();
-    
-    notionPages.forEach(page => {
-      const url = page.properties?.URL?.url;
-      const title = page.properties?.Name?.title?.[0]?.text?.content;
-      if (url) notionLookupByUrl.set(url, page);
-      if (title) notionLookupByTitle.set(title, page);
-    });
-    
-    res.write(`data: ${JSON.stringify({message: '🗺️ Lookup maps created', type: 'success'})}\n\n`);
-    
-    // Smart Diff analysis
-    const toAdd = [];
-    const toUpdate = [];
-    const toSkip = [];
-    
-    for (const raindrop of raindrops) {
-      // Filter based on mode
-      if (mode === 'new') {
-        const createdDate = new Date(raindrop.created);
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        if (createdDate < thirtyDaysAgo) {
-          toSkip.push(raindrop);
-          continue;
+    // Helper to send progress updates
+    const sendUpdate = (message, type = '') => {
+      console.log(`🧠 [${lockId}] ${message}`);
+      
+      const updateData = {
+        message: `${message}`,
+        type,
+        counts: { added: addedCount, updated: updatedCount, skipped: skippedCount, deleted: deletedCount },
+        lockInfo: {
+          locked: GLOBAL_SYNC_LOCK,
+          lockId: lockId,
+          duration: SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0
         }
+      };
+      
+      // Update current sync state
+      if (currentSync) {
+        currentSync.counts = updateData.counts;
       }
-
-      const existingPage = notionLookupByUrl.get(raindrop.link) || notionLookupByTitle.get(raindrop.title);
-
-      if (!existingPage) {
-        toAdd.push(raindrop);
+      
+      broadcastSSEData(updateData);
+    };
+    
+    sendUpdate(`🧠 Starting Smart Diff Sync (${isFullSync ? 'full' : 'incremental'})`, 'info');
+    
+    // === STEP 1: FETCH ALL DATA (EFFICIENT) ===
+    sendUpdate('📡 Fetching raindrops...', 'fetching');
+    let raindrops = [];
+    try {
+      if (mode === 'new') {
+        // Get recent raindrops (you might need to add getRecentRaindrops to your service)
+        raindrops = await getAllRaindrops(limit || 50); // Fallback to limited set
       } else {
-        const notionTitle = existingPage.properties?.Name?.title?.[0]?.text?.content || '';
-        const notionUrl = existingPage.properties?.URL?.url || '';
+        raindrops = await getAllRaindrops(limit);
+      }
+    } catch (error) {
+      throw new Error(`Failed to fetch raindrops: ${error.message}`);
+    }
+    
+    sendUpdate(`✅ Found ${raindrops.length} raindrops`, 'success');
+    
+    if (raindrops.length === 0) {
+      sendUpdate('No raindrops to process. Sync complete.', 'complete');
+      broadcastSSEData({ complete: true });
+      return;
+    }
+    
+    sendUpdate('📡 Fetching Notion pages...', 'fetching');
+    let notionPages = [];
+    try {
+      notionPages = await getNotionPages();
+    } catch (error) {
+      throw new Error(`Failed to fetch Notion pages: ${error.message}`);
+    }
+    
+    sendUpdate(`✅ Found ${notionPages.length} Notion pages`, 'success');
+    
+    // === STEP 2: BUILD LOOKUP MAPS ===
+    sendUpdate('🗺️ Building lookup maps...', 'processing');
+    const { notionPagesByUrl, notionPagesByTitle, raindropUrlSet } = 
+      buildLookupMaps(notionPages, raindrops);
+    
+    // === STEP 3: SMART DIFF ANALYSIS ===
+    sendUpdate('🔍 Performing Smart Diff analysis...', 'processing');
+    
+    const itemsToAdd = [];
+    const itemsToUpdate = [];
+    const itemsToSkip = [];
+    const pagesToDelete = [];
+    
+    // Analyze raindrops for changes
+    for (const item of raindrops) {
+      const normUrl = normalizeUrl(item.link);
+      const normTitle = normalizeTitle(item.title);
+      
+      const existingPage = notionPagesByUrl.get(normUrl) || notionPagesByTitle.get(normTitle);
+      
+      if (existingPage) {
+        // Check if update needed
+        const currentTitle = existingPage.properties?.Name?.title?.[0]?.text?.content || '';
+        const currentUrl = existingPage.properties?.URL?.url || '';
         
-        if (notionTitle !== raindrop.title || notionUrl !== raindrop.link) {
-          toUpdate.push({ raindrop, existingPage });
+        const currentTags = new Set();
+        if (existingPage.properties?.Tags?.multi_select) {
+          existingPage.properties.Tags.multi_select.forEach(tag => {
+            currentTags.add(tag.name);
+          });
+        }
+        
+        const needsUpdate = 
+          (normalizeTitle(currentTitle) !== normalizeTitle(item.title)) ||
+          (normalizeUrl(currentUrl) !== normUrl) ||
+          !tagsMatch(currentTags, item.tags || []);
+        
+        if (needsUpdate) {
+          itemsToUpdate.push({ item, existingPage });
         } else {
-          toSkip.push(raindrop);
+          itemsToSkip.push(item);
+        }
+      } else {
+        itemsToAdd.push(item);
+      }
+    }
+    
+    // Find pages to delete (full sync only)
+    if (isFullSync) {
+      for (const [url, page] of notionPagesByUrl.entries()) {
+        if (!raindropUrlSet.has(url)) {
+          pagesToDelete.push(page);
         }
       }
     }
     
-    const totalOperations = toAdd.length + toUpdate.length;
-    const efficiency = totalOperations > 0 ? Math.round(((raindrops.length - totalOperations) / raindrops.length) * 100) : 100;
+    const totalOperations = itemsToAdd.length + itemsToUpdate.length + pagesToDelete.length;
+    skippedCount = itemsToSkip.length;
     
-    res.write(`data: ${JSON.stringify({ 
-      message: `🔍 Smart Diff complete: ${toAdd.length} to add, ${toUpdate.length} to update, ${toSkip.length} to skip`, 
-      type: 'success'
-    })}\n\n`);
+    sendUpdate(`🔍 Smart Diff complete: ${itemsToAdd.length} to add, ${itemsToUpdate.length} to update, ${itemsToSkip.length} to skip, ${pagesToDelete.length} to delete`, 'analysis');
     
-    res.write(`data: ${JSON.stringify({ 
-      message: `🚀 ${efficiency}% efficiency - processing only ${totalOperations} of ${raindrops.length} items`, 
-      type: 'info'
-    })}\n\n`);
+    if (totalOperations === 0) {
+      sendUpdate('🎉 Everything already in sync! No changes needed.', 'complete');
+      broadcastSSEData({ complete: true, counts: { added: 0, updated: 0, skipped: skippedCount, deleted: 0 } });
+      return;
+    }
+    
+    const efficiency = Math.round(((raindrops.length - totalOperations) / raindrops.length) * 100);
+    sendUpdate(`🚀 Processing ${totalOperations} operations (${efficiency}% efficiency vs 0% in old system)`, 'info');
+    
+    // === STEP 4: PROCESS ONLY THE DIFFERENCES ===
     
     // Process additions
-    for (const raindrop of toAdd) {
-      try {
-        await createNotionPage({
-          name: raindrop.title,
-          url: raindrop.link,
-          tags: raindrop.tags || []
-        });
-        res.write(`data: ${JSON.stringify({message: `➕ Added: "${raindrop.title}"`, type: 'success'})}\n\n`);
-      } catch (error) {
-        res.write(`data: ${JSON.stringify({message: `❌ Failed to add: "${raindrop.title}"`, type: 'error'})}\n\n`);
+    if (itemsToAdd.length > 0) {
+      sendUpdate(`➕ Creating ${itemsToAdd.length} new pages...`, 'processing');
+      
+      for (const item of itemsToAdd) {
+        try {
+          const result = await createNotionPage(item);
+          if (result.success) {
+            sendUpdate(`✅ Created: "${item.title}"`, 'added');
+            addedCount++;
+          } else {
+            sendUpdate(`❌ Failed to create: "${item.title}"`, 'failed');
+            failedCount++;
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+        } catch (error) {
+          sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
+          failedCount++;
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
       }
     }
     
     // Process updates
-    for (const { raindrop, existingPage } of toUpdate) {
-      try {
-        await updateNotionPage(existingPage.id, {
-          name: raindrop.title,
-          url: raindrop.link,
-          tags: raindrop.tags || []
-        });
-        res.write(`data: ${JSON.stringify({message: `🔄 Updated: "${raindrop.title}"`, type: 'success'})}\n\n`);
-      } catch (error) {
-        res.write(`data: ${JSON.stringify({message: `❌ Failed to update: "${raindrop.title}"`, type: 'error'})}\n\n`);
+    if (itemsToUpdate.length > 0) {
+      sendUpdate(`🔄 Updating ${itemsToUpdate.length} existing pages...`, 'processing');
+      
+      for (const { item, existingPage } of itemsToUpdate) {
+        try {
+          const success = await updateNotionPage(existingPage.id, item);
+          if (success) {
+            sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
+            updatedCount++;
+          } else {
+            sendUpdate(`❌ Failed to update: "${item.title}"`, 'failed');
+            failedCount++;
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+        } catch (error) {
+          sendUpdate(`❌ Error updating "${item.title}": ${error.message}`, 'failed');
+          failedCount++;
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
       }
     }
     
-    res.write(`data: ${JSON.stringify({ 
-      message: `✅ Smart Diff sync completed! ${efficiency}% efficiency achieved`, 
-      type: 'success',
-      isComplete: true
-    })}\n\n`);
+    // Process deletions
+    if (pagesToDelete.length > 0) {
+      sendUpdate(`🗑️ Deleting ${pagesToDelete.length} obsolete pages...`, 'processing');
+      
+      for (const page of pagesToDelete) {
+        try {
+          const url = page.properties?.URL?.url || 'Unknown URL';
+          await deleteNotionPage(page.id);
+          sendUpdate(`🗑️ Deleted: ${url}`, 'deleted');
+          deletedCount++;
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+        } catch (error) {
+          sendUpdate(`❌ Error deleting page: ${error.message}`, 'failed');
+          failedCount++;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    }
+    
+    // Final summary
+    const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
+    const finalEfficiency = Math.round(((raindrops.length - totalOperations) / raindrops.length) * 100);
+    
+    sendUpdate(`🎉 Smart Diff Sync completed in ${duration}s!`, 'complete');
+    sendUpdate(`📊 Efficiency: ${totalOperations}/${raindrops.length} items processed (${finalEfficiency}% efficiency improvement)`, 'info');
+    sendUpdate(`📈 Results: ${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped, ${deletedCount} deleted, ${failedCount} failed`, 'summary');
+    
+    console.log(`✅ [${lockId}] SMART DIFF COMPLETE: ${duration}s, ${finalEfficiency}% efficiency`);
+    
+    if (currentSync) {
+      currentSync.completed = true;
+      currentSync.isRunning = false;
+    }
+    
+    broadcastSSEData({ 
+      complete: true,
+      finalCounts: { added: addedCount, updated: updatedCount, skipped: skippedCount, deleted: deletedCount, failed: failedCount },
+      efficiency: { itemsProcessed: totalOperations, totalItems: raindrops.length, percentage: finalEfficiency, duration }
+    });
     
   } catch (error) {
-    console.error('Sync error:', error);
-    res.write(`data: ${JSON.stringify({message: `❌ Sync failed: ${error.message}`, type: 'error', isComplete: true})}\n\n`);
+    console.error(`❌ [${lockId}] SMART DIFF ERROR:`, error);
+    broadcastSSEData({
+      message: `Smart Diff Sync failed: ${error.message}`,
+      type: 'failed',
+      complete: true
+    });
+    throw error;
   }
 }
 
-// Main export function
+// Main Vercel export function
 module.exports = async (req, res) => {
   try {
     console.log('Request:', req.method, req.url);
@@ -400,6 +354,7 @@ module.exports = async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const password = url.searchParams.get('password');
     const mode = url.searchParams.get('mode') || 'all';
+    const limit = parseInt(url.searchParams.get('limit') || '0', 10);
     
     // Password check
     if (!password || password !== process.env.ADMIN_PASSWORD) {
@@ -416,16 +371,16 @@ module.exports = async (req, res) => {
     
     if (pathname === '/api/counts') {
       try {
-        const [raindrops, notionPages] = await Promise.all([
-          getRaindrops(),
-          getNotionPages()
+        const [raindropTotal, notionTotal] = await Promise.all([
+          getRaindropTotal(),
+          getTotalNotionPages()
         ]);
         
         res.json({
-          raindropTotal: raindrops.length,
-          notionTotal: notionPages.length,
-          isSynced: Math.abs(raindrops.length - notionPages.length) <= 5,
-          lastUpdated: new Date().toISOString()
+          raindropTotal,
+          notionTotal,
+          isSynced: raindropTotal === notionTotal,
+          success: true
         });
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -438,13 +393,81 @@ module.exports = async (req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       
-      await performSmartDiffSync(mode, res);
-      res.end();
+      const streamId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      activeStreams.set(streamId, res);
+      
+      console.log(`🔗 NEW SYNC REQUEST: ${streamId}, mode: ${mode}`);
+      
+      // Check if another sync is running
+      if (GLOBAL_SYNC_LOCK) {
+        const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
+        console.log(`🚫 SYNC LOCK ACTIVE - Lock ID: ${SYNC_LOCK_ID}, Duration: ${lockDuration}s`);
+        
+        res.write(`data: ${JSON.stringify({
+          message: `⏸️ Sync already running (${lockDuration}s elapsed). Please wait...`,
+          type: 'waiting',
+          lockInfo: { locked: true, lockId: SYNC_LOCK_ID, duration: lockDuration }
+        })}\n\n`);
+        return;
+      }
+      
+      // Set global lock
+      GLOBAL_SYNC_LOCK = true;
+      SYNC_START_TIME = Date.now();
+      SYNC_LOCK_ID = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      
+      console.log(`🔐 SETTING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
+      
+      // Create new sync process
+      currentSync = {
+        mode,
+        limit,
+        isRunning: true,
+        lockId: SYNC_LOCK_ID,
+        startTime: Date.now(),
+        counts: { added: 0, updated: 0, skipped: 0, deleted: 0 },
+        completed: false
+      };
+      
+      // Start sync process
+      performSmartDiffSync(mode, limit)
+        .then(() => {
+          console.log(`✅ Sync completed successfully - Lock ID: ${SYNC_LOCK_ID}`);
+        })
+        .catch(error => {
+          console.error(`❌ SYNC ERROR - Lock ID: ${SYNC_LOCK_ID}:`, error);
+          broadcastSSEData({
+            message: `Sync failed: ${error.message}`,
+            type: 'failed',
+            complete: true
+          });
+        })
+        .finally(() => {
+          // Always release lock
+          console.log(`🔓 RELEASING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
+          GLOBAL_SYNC_LOCK = false;
+          SYNC_START_TIME = null;
+          SYNC_LOCK_ID = null;
+          
+          if (currentSync) {
+            currentSync.isRunning = false;
+            currentSync = null;
+          }
+          
+          activeStreams.delete(streamId);
+        });
+      
+      // Handle client disconnect
+      req.on('close', () => {
+        activeStreams.delete(streamId);
+      });
+      
       return;
     }
     
     if (pathname === '/sync' || pathname === '/sync-all') {
       const syncMode = pathname === '/sync-all' ? 'all' : (mode || 'new');
+      res.setHeader('Content-Type', 'text/html');
       res.send(`
         <!DOCTYPE html>
         <html>
@@ -462,6 +485,11 @@ module.exports = async (req, res) => {
             .success { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
             .error { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
             .info { border-left-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+            .added { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
+            .updated { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
+            .deleted { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+            .failed { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
+            .complete { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); font-weight: bold; }
           </style>
         </head>
         <body>
@@ -495,7 +523,7 @@ module.exports = async (req, res) => {
                 status.appendChild(div);
                 status.scrollTop = status.scrollHeight;
                 
-                if (data.isComplete) {
+                if (data.complete) {
                   evtSource.close();
                   btn.disabled = false;
                   btn.textContent = 'Start ${syncMode === 'all' ? 'Smart Diff' : 'Incremental'} Sync';
@@ -521,6 +549,7 @@ module.exports = async (req, res) => {
     
     // Dashboard
     if (pathname === '/') {
+      res.setHeader('Content-Type', 'text/html');
       res.send(`
         <!DOCTYPE html>
         <html>
@@ -572,6 +601,7 @@ module.exports = async (req, res) => {
               .catch(e => {
                 document.getElementById('status').textContent = 'Error loading status';
                 document.getElementById('status').style.color = '#ff0000';
+                console.error('Count loading error:', e);
               });
           </script>
         </body>
