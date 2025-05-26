@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sync Page Testing - Design Iteration</title>
+  
+  <link rel="stylesheet" href="../styles/design-system.css">
+  <link rel="stylesheet" href="../styles/components.css">
+  <link rel="stylesheet" href="../styles/dashboard.css">
+</head>
+<body>
+  <div class="mode-switcher">
+    <h3>Test Modes:</h3>
+    <button onclick="setMode('smart')" class="active">Smart Sync</button>
+    <button onclick="setMode('incremental')">Incremental Sync</button>
+    <button onclick="setMode('reset')">Reset & Full Sync</button>
+    <hr>
+    <h4>Test Actions:</h4>
+    <button onclick="testSync()">Start Test Sync</button>
+    <button onclick="resetPage()">Reset Page</button>
+  </div>
+
+  <div class="container">
+    <main class="sync-page" id="main-content" role="main">
+      <header class="sync-header">
+        <a href="#" class="back-button">← Back to Dashboard</a>
+        
+        <h1 class="text-huge sync-title" id="sync-title">
+          Smart Sync
+        </h1>
+        
+        <p class="text-medium sync-description" id="sync-description">
+          Smart analysis - only sync what needs to change
+        </p>
+      </header>
+
+      <section class="sync-interface">
+        <div class="sync-controls">
+          <button id="syncBtn" class="action-button primary sync-button" type="button">
+            Start Smart Sync
+          </button>
+        </div>
+
+        <div class="sync-progress" id="progress-section">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="progress-text" id="progress-text">Preparing sync...</div>
+        </div>
+
+        <div class="sync-stats" id="sync-stats">
+          <div class="stat-group">
+            <div class="stat-item">
+              <span class="stat-number" id="added-count">0</span>
+              <span class="stat-label">Added</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number" id="updated-count">0</span>
+              <span class="stat-label">Updated</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number" id="deleted-count">0</span>
+              <span class="stat-label">Deleted</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number" id="skipped-count">0</span>
+              <span class="stat-label">Skipped</span>
+            </div>
+          </div>
+          
+          <div class="efficiency-display" id="efficiency-display">
+            <span class="efficiency-number" id="efficiency-percentage">97%</span>
+            <span class="efficiency-label">Efficiency</span>
+            <div class="efficiency-status" id="efficiency-status">
+              🚀 Excellent efficiency!
+            </div>
+          </div>
+        </div>
+
+        <div class="sync-status">
+          <div 
+            id="status" 
+            class="status-display" 
+            role="log" 
+            aria-live="polite" 
+            aria-label="Sync progress updates"
+          ></div>
+        </div>
+      </section>
+
+      <aside class="sync-info">
+        <div class="info-card" id="info-card-1">
+          <h3>🧠 Smart Sync Technology</h3>
+          <p>Advanced algorithm that analyzes all data and processes only necessary changes:</p>
+          <ul>
+            <li>Intelligent difference detection</li>
+            <li>95%+ efficiency improvement</li>
+            <li>Preserves unchanged data</li>
+            <li>Minimal API usage</li>
+          </ul>
+        </div>
+        
+        <div class="info-card">
+          <h3>📊 Live Updates</h3>
+          <p>Real-time progress tracking with detailed insights:</p>
+          <ul>
+            <li>Live progress streaming</li>
+            <li>Operation counts</li>
+            <li>Efficiency metrics</li>
+            <li>Error reporting</li>
+          </ul>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="../scripts/utils.js"></script>
+  <script src="../scripts/sync.js"></script>
+  <script src="../scripts/enhancements.js"></script>
+</body>
+</html>

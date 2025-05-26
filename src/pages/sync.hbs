@@ -3,153 +3,154 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{#if (eq mode 'all')}}Full Sync{{else}}Incremental Sync{{/if}} - Raindrop Notion</title>
+  <title>{{#if (eq mode "reset")}}Reset & Full Sync{{else if (eq mode "incremental")}}Incremental Sync{{else}}Smart Sync{{/if}} - Raindrop Notion</title>
   
-  <!-- Stylesheets -->
   <link rel="stylesheet" href="/public/styles/design-system.css">
   <link rel="stylesheet" href="/public/styles/components.css">
-  <link rel="stylesheet" href="/public/styles/sync.css">
+  <link rel="stylesheet" href="/public/styles/dashboard.css">
 </head>
 <body>
   <div class="container">
-    <!-- Header -->
-    <header class="header">
-      <a href="/?password={{password}}" class="back-link">← Back to Dashboard</a>
-      <h1 class="page-title">
-        {{#if (eq mode 'all')}}
-          Full Sync
-        {{else}}
-          Incremental Sync
-        {{/if}}
-      </h1>
-      <p class="page-subtitle">
-        {{#if (eq mode 'all')}}
-          Complete reconciliation of all bookmarks
-        {{else}}
-          Sync recent bookmarks only
-        {{/if}}
-      </p>
-    </header>
+    <main class="sync-page" id="main-content" role="main">
+      <header class="sync-header">
+        <a href="/?password={{password}}" class="back-button">← Back to Dashboard</a>
+        
+        <h1 class="text-huge sync-title">
+          {{#if (eq mode "reset")}}
+            Reset & Full Sync
+          {{else if (eq mode "incremental")}}
+            Incremental Sync
+          {{else}}
+            Smart Sync
+          {{/if}}
+        </h1>
+        
+        <p class="text-medium sync-description">
+          {{#if (eq mode "reset")}}
+            Delete all Notion pages and recreate from Raindrop
+          {{else if (eq mode "incremental")}}
+            Sync only recent bookmarks ({{daysBack}} days)
+          {{else}}
+            Smart analysis - only sync what needs to change
+          {{/if}}
+        </p>
+      </header>
 
-    <!-- Sync Interface -->
-    <main class="sync-main">
-      <!-- Sync Card -->
-      <div class="sync-card">
-        <div class="sync-header">
-          <div class="sync-icon">
-            {{#if (eq mode 'all')}}
-              🔄
-            {{else}}
-              ⚡
-            {{/if}}
-          </div>
-          <div class="sync-info">
-            <h2 class="sync-title">
-              {{#if (eq mode 'all')}}
-                Full Synchronization
-              {{else}}
-                Incremental Sync
-              {{/if}}
-            </h2>
-            <p class="sync-description">
-              {{#if (eq mode 'all')}}
-                Performs complete analysis using Smart Diff technology. Only processes items that need changes for maximum efficiency.
-              {{else}}
-                Syncs only recent bookmarks added to Raindrop.io.
-              {{/if}}
-            </p>
-          </div>
-        </div>
-
-        <!-- Action Button -->
+      <section class="sync-interface">
         <div class="sync-controls">
-          <button id="startBtn" class="btn btn-primary btn-large">
-            {{#if (eq mode 'all')}}
-              Start Full Sync
-            {{else}}
+          <button id="syncBtn" class="action-button primary sync-button" type="button">
+            {{#if (eq mode "reset")}}
+              Start Reset & Full Sync
+            {{else if (eq mode "incremental")}}
               Start Incremental Sync
+            {{else}}
+              Start Smart Sync
             {{/if}}
           </button>
         </div>
 
-        <!-- Progress Indicator -->
-        <div class="progress-container" style="display: none;">
+        <div class="sync-progress" id="progress-section">
           <div class="progress-bar">
-            <div class="progress-fill"></div>
+            <div class="progress-fill" id="progress-fill"></div>
           </div>
-          <div class="progress-text">Starting sync...</div>
+          <div class="progress-text" id="progress-text">Preparing sync...</div>
         </div>
-      </div>
 
-      <!-- Status Display -->
-      <div class="status-container">
-        <div id="status" class="status-display"></div>
-      </div>
+        <div class="sync-status">
+          <div 
+            id="status" 
+            class="status-display" 
+            role="log" 
+            aria-live="polite" 
+            aria-label="Sync progress updates"
+          ></div>
+        </div>
 
-      <!-- Results Display -->
-      <div id="result" class="result-container" style="display: none;">
-        <!-- Results will be populated by JavaScript -->
-      </div>
-    </main>
+        <div class="sync-stats" id="sync-stats">
+          <div class="stat-group">
+            <div class="stat-item">
+              <span class="stat-number" id="added-count">0</span>
+              <span class="stat-label">Added</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number" id="updated-count">0</span>
+              <span class="stat-label">Updated</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number" id="deleted-count">0</span>
+              <span class="stat-label">Deleted</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number" id="skipped-count">0</span>
+              <span class="stat-label">Skipped</span>
+            </div>
+          </div>
+          
+          {{#unless (eq mode "reset")}}
+          <div class="efficiency-display">
+            <div class="efficiency-stat">
+              <span class="efficiency-number" id="efficiency-percentage">--</span>
+              <span class="efficiency-label">Efficiency</span>
+            </div>
+            <div class="efficiency-status" id="efficiency-status">
+              Analyzing...
+            </div>
+          </div>
+          {{/unless}}
+        </div>
+      </section>
 
-    <!-- Feature Info -->
-    <aside class="feature-info">
-      <div class="feature-card">
-        <h3>✨ Smart Diff Technology</h3>
-        <p>Our advanced algorithm analyzes all data once and processes only the differences, achieving 95%+ efficiency improvements.</p>
+      <aside class="sync-info">
+        {{#if (eq mode "reset")}}
+        <div class="info-card warning">
+          <h3>⚠️ Reset Mode</h3>
+          <p>This will delete all existing Notion pages and recreate them from Raindrop. This operation cannot be undone.</p>
+          <ul>
+            <li>All Notion pages will be deleted</li>
+            <li>All bookmarks will be recreated</li>
+            <li>Custom Notion data will be lost</li>
+          </ul>
+        </div>
+        {{else if (eq mode "incremental")}}
+        <div class="info-card">
+          <h3>⚡ Incremental Sync</h3>
+          <p>Fast synchronization focusing on recent activity:</p>
+          <ul>
+            <li>Last {{daysBack}} days of bookmarks</li>
+            <li>Modified items only</li>
+            <li>Minimal processing time</li>
+            <li>Preserves existing data</li>
+          </ul>
+        </div>
+        {{else}}
+        <div class="info-card">
+          <h3>🧠 Smart Sync Technology</h3>
+          <p>Advanced algorithm that analyzes all data and processes only necessary changes:</p>
+          <ul>
+            <li>Intelligent difference detection</li>
+            <li>95%+ efficiency improvement</li>
+            <li>Preserves unchanged data</li>
+            <li>Minimal API usage</li>
+          </ul>
+        </div>
+        {{/unless}}
         
-        <div class="feature-stats">
-          <div class="stat">
-            <span class="stat-number">2</span>
-            <span class="stat-label">API Calls</span>
-          </div>
-          <div class="stat">
-            <span class="stat-number">~97%</span>
-            <span class="stat-label">Efficiency</span>
-          </div>
-          <div class="stat">
-            <span class="stat-number">1-2min</span>
-            <span class="stat-label">Completion</span>
-          </div>
+        <div class="info-card">
+          <h3>📊 Live Updates</h3>
+          <p>Real-time progress tracking with detailed insights:</p>
+          <ul>
+            <li>Live progress streaming</li>
+            <li>Operation counts</li>
+            <li>Efficiency metrics</li>
+            <li>Error reporting</li>
+          </ul>
         </div>
-      </div>
-
-      {{#if (eq mode 'all')}}
-      <div class="feature-card">
-        <h3>🔍 Full Reconciliation</h3>
-        <p>Compares all bookmarks in both systems and identifies:</p>
-        <ul>
-          <li>New items to add</li>
-          <li>Existing items to update</li>
-          <li>Orphaned items to remove</li>
-        </ul>
-      </div>
-      {{else}}
-      <div class="feature-card">
-        <h3>⚡ Quick Updates</h3>
-        <p>Focuses on recent activity for fast synchronization:</p>
-        <ul>
-          <li>Last 30 days of bookmarks</li>
-          <li>Modified items only</li>
-          <li>Minimal processing time</li>
-        </ul>
-      </div>
-      {{/if}}
-    </aside>
+      </aside>
+    </main>
   </div>
 
-  <!-- Scripts -->
   <script src="/public/scripts/utils.js"></script>
-  <script src="/public/scripts/prevention.js"></script>
   <script src="/public/scripts/sync.js"></script>
-
-  <!-- Initialize with mode -->
-  <script>
-    // Pass mode to sync manager
-    if (window.syncManager) {
-      const urlParams = new URLSearchParams(window.location.search);
-      window.syncManager.mode = urlParams.get('mode') || 'all';
-    }
-  </script>
+  <script src="/public/scripts/enhancements.js"></script>
 </body>
 </html>

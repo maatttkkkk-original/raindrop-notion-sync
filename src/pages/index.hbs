@@ -5,54 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Raindrop/Notion Sync</title>
   
-  <!-- CSS Files -->
   <link rel="stylesheet" href="/public/styles/design-system.css">
-  <link rel="stylesheet" href="/public/styles/dashboard.css">
   <link rel="stylesheet" href="/public/styles/components.css">
+  <link rel="stylesheet" href="/public/styles/dashboard.css">
 </head>
 <body>
   <div class="container">
-    <main class="dashboard" role="main">
-      <!-- Status Indicator -->
+    <main class="dashboard" id="main-content" role="main">
       <div 
-        id="status-indicator" 
+        id="indicator" 
         class="status-indicator not-synced" 
         role="img" 
         aria-label="Sync status indicator"
       ></div>
       
-      <!-- Title -->
-      <h1 class="dashboard-title text-huge text-primary">
-        Raindrop/Notion Sync
-      </h1>
+      <h1 class="text-huge">Raindrop/Notion Sync</h1>
       
-      <!-- Count Displays -->
-      <div class="count-display loading" id="raindrop-display">
-        <span class="text-huge" id="raindrop-count">...</span>
-        <span class="text-huge"> Raindrop Bookmarks</span>
+      <div class="count-display" id="raindrop-display">
+        <span class="text-huge" id="raindrop">... Raindrop Bookmarks</span>
       </div>
       
-      <div class="count-display loading" id="notion-display">
-        <span class="text-huge" id="notion-count">...</span>
-        <span class="text-huge"> Notion Pages</span>
+      <div class="count-display" id="notion-display">
+        <span class="text-huge" id="notion">... Notion Pages</span>
       </div>
       
-      <!-- Status Message -->
       <div 
-        id="status-message" 
-        class="status-message calculating text-huge" 
+        id="status" 
+        class="text-huge status-text" 
         role="status" 
         aria-live="polite"
       >
-        Calculating sync status...
+        Loading...
       </div>
       
-      <!-- Cache Status Display -->
-      <div class="status-message calculating text-medium" id="cache-status" role="status">
-        Loading cache status...
-      </div>
-      
-      <!-- Error Message -->
       <div id="error-message" class="error-message d-none" role="alert">
         <p>Failed to load sync status.</p>
         <button id="retry-button" class="retry-button" type="button">
@@ -60,53 +45,32 @@
         </button>
       </div>
       
-      <!-- Standard Sync Actions -->
-      <div class="dashboard-actions" role="navigation" aria-label="Standard sync actions">
+      <div class="dashboard-actions" role="navigation" aria-label="Sync actions">
         <a 
-          href="/sync?password={{password}}&mode=new" 
+          href="/sync?password={{password}}&mode=smart" 
           class="action-button primary"
-          id="sync-new-button"
+          id="smart-sync-button"
         >
-          Sync New ↻
+          Smart Sync ↻
         </a>
         
         <a 
-          href="/sync-all?password={{password}}" 
+          href="/sync?password={{password}}&mode=incremental&daysBack=7" 
           class="action-button secondary"
-          id="full-sync-button"
+          id="incremental-sync-button"
         >
-          Reset / FullSync
+          Recent Only (7 days)
+        </a>
+        
+        <a 
+          href="/sync?password={{password}}&mode=reset&deleteOrphaned=true" 
+          class="action-button danger"
+          id="reset-sync-button"
+        >
+          Reset & Full Sync
         </a>
       </div>
       
-      <!-- Cached Sync Actions -->
-      <div class="dashboard-actions" role="navigation" aria-label="Cached sync actions">
-        <a 
-          href="/sync-cached?password={{password}}&mode=incremental" 
-          class="action-button cached"
-          id="cached-sync-new-button"
-        >
-          CACHED Sync New ↻ [FAST]
-        </a>
-        
-        <a 
-          href="/sync-all-cached?password={{password}}" 
-          class="action-button cached"
-          id="cached-full-sync-button"
-        >
-          CACHED Reset / FullSync [FAST]
-        </a>
-        
-        <a 
-          href="/cache?password={{password}}" 
-          class="action-button secondary"
-          id="cache-manage-button"
-        >
-          Manage Cache
-        </a>
-      </div>
-      
-      <!-- Decorative Lines -->
       <div class="decorative-lines" aria-hidden="true">
         <div class="decorative-line"></div>
         <div class="decorative-line"></div>
@@ -120,128 +84,8 @@
     </main>
   </div>
   
-  <!-- JavaScript -->
   <script src="/public/scripts/utils.js"></script>
-  <script src="/public/scripts/dashboard.js"></script>
-  
-  <script>
-    // Fixed initialization - wait for scripts to load
-    document.addEventListener('DOMContentLoaded', function() {
-      const password = '{{password}}';
-      
-      // Load both counts and cache status
-      Promise.all([
-        loadCountsSimple(password),
-        loadCacheStatus(password)
-      ]);
-      
-      // Simple loading function if dashboard manager doesn't exist
-      if (!window.dashboardManager) {
-        console.log('Dashboard manager not found, using simple loading');
-      }
-    });
-    
-    // Simple fallback function
-    async function loadCountsSimple(password) {
-      try {
-        const response = await fetch(`/api/counts?password=${encodeURIComponent(password)}`);
-        const data = await response.json();
-        
-        // Update counts
-        document.getElementById('raindrop-count').textContent = data.raindropTotal.toLocaleString();
-        document.getElementById('notion-count').textContent = data.notionTotal.toLocaleString();
-        
-        // Update status
-        const difference = Math.abs(data.raindropTotal - data.notionTotal);
-        const isSynced = difference <= 5;
-        
-        const statusIndicator = document.getElementById('status-indicator');
-        const statusMessage = document.getElementById('status-message');
-        
-        if (isSynced) {
-          statusIndicator.classList.remove('not-synced');
-          statusIndicator.classList.add('synced');
-          statusMessage.textContent = 'All bookmarks are synchronized';
-          statusMessage.className = 'status-message synced text-huge';
-        } else {
-          statusMessage.textContent = `${difference.toLocaleString()} bookmarks need synchronization`;
-          statusMessage.className = 'status-message not-synced text-huge';
-        }
-        
-        // Remove loading states
-        document.getElementById('raindrop-display').classList.remove('loading');
-        document.getElementById('notion-display').classList.remove('loading');
-        
-      } catch (error) {
-        console.error('Failed to load counts:', error);
-        document.getElementById('raindrop-count').textContent = 'Error';
-        document.getElementById('notion-count').textContent = 'Error';
-        document.getElementById('status-message').textContent = 'Failed to load sync status';
-        
-        // Show error message
-        document.getElementById('error-message').classList.remove('d-none');
-        document.getElementById('retry-button').addEventListener('click', () => {
-          location.reload();
-        });
-      }
-    }
-    
-    // Load cache status
-    async function loadCacheStatus(password) {
-      try {
-        const response = await fetch(`/api/cache-status?password=${encodeURIComponent(password)}`);
-        const data = await response.json();
-        
-        const cacheStatusDiv = document.getElementById('cache-status');
-        const cachedButtons = document.querySelectorAll('.action-button.cached');
-        
-        if (data.success && data.cache.exists) {
-          const cache = data.cache;
-          
-          if (cache.valid) {
-            cacheStatusDiv.textContent = `Cache: ${cache.metadata.itemCount.toLocaleString()} items, ${cache.metadata.ageMinutes}m old`;
-            cacheStatusDiv.className = 'status-message synced text-medium';
-            
-            // Enable cached buttons
-            cachedButtons.forEach(btn => {
-              btn.style.opacity = '1';
-              btn.style.pointerEvents = 'auto';
-            });
-          } else {
-            cacheStatusDiv.textContent = `Cache expired (${cache.metadata.ageHours}h old) - refresh needed`;
-            cacheStatusDiv.className = 'status-message not-synced text-medium';
-            
-            // Disable cached buttons
-            cachedButtons.forEach(btn => {
-              btn.style.opacity = '0.5';
-              btn.style.pointerEvents = 'none';
-              btn.onclick = (e) => {
-                e.preventDefault();
-                alert('Cache is expired. Please refresh cache first.');
-              };
-            });
-          }
-        } else {
-          cacheStatusDiv.textContent = 'No cache found - create cache to enable fast sync';
-          cacheStatusDiv.className = 'status-message not-synced text-medium';
-          
-          // Disable cached buttons
-          cachedButtons.forEach(btn => {
-            btn.style.opacity = '0.5';
-            btn.style.pointerEvents = 'none';
-            btn.onclick = (e) => {
-              e.preventDefault();
-              alert('No cache found. Please create cache first.');
-            };
-          });
-        }
-        
-      } catch (error) {
-        console.error('Failed to load cache status:', error);
-        document.getElementById('cache-status').textContent = 'Cache status unavailable';
-        document.getElementById('cache-status').className = 'status-message not-synced text-medium';
-      }
-    }
-  </script>
+  <script src="/public/scripts/sync.js"></script>
+  <script src="/public/scripts/enhancements.js"></script>
 </body>
 </html>

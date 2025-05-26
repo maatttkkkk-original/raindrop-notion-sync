@@ -2,36 +2,107 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Error</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Error - Raindrop/Notion Sync</title>
+  
   <link rel="stylesheet" href="/public/styles/design-system.css">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="stylesheet" href="/public/styles/components.css">
+  <link rel="stylesheet" href="/public/styles/dashboard.css">
 </head>
 <body>
   <div class="container">
-    <div class="toggle-container">
-      <div class="toggle-indicator not-synced"></div>
-    </div>
-    
-    <h1 class="error-title">Error</h1>
-    
-    <div class="problem-label">Problem</div>
-    <div class="error-message">{{error}}</div>
-    
-    <div class="actions-container">
-      <a href="/" class="back-button">Back ↤</a>
-    </div>
+    <main class="dashboard error-page" id="main-content" role="main">
+      <div 
+        class="status-indicator not-synced" 
+        role="img" 
+        aria-label="Error status indicator"
+      ></div>
+      
+      <h1 class="text-huge error-title">Error</h1>
+      
+      <div class="error-details">
+        <div class="text-medium error-label">Problem</div>
+        <div class="text-huge error-message" id="error-message">
+          {{#if error}}
+            {{error}}
+          {{else}}
+            An unexpected error occurred
+          {{/if}}
+        </div>
+      </div>
+      
+      {{#if code}}
+      <div class="error-code">
+        <div class="text-small error-code-label">Error Code</div>
+        <div class="text-medium error-code-value">{{code}}</div>
+      </div>
+      {{/if}}
+      
+      {{#if details}}
+      <div class="error-details-extended">
+        <div class="text-small error-details-label">Details</div>
+        <div class="text-small error-details-text">{{details}}</div>
+      </div>
+      {{/if}}
+      
+      <div class="dashboard-actions error-actions" role="navigation" aria-label="Error recovery actions">
+        <a 
+          href="/?password={{password}}" 
+          class="action-button primary"
+          id="back-button"
+        >
+          Back to Dashboard ↤
+        </a>
+        
+        <button 
+          type="button"
+          class="action-button secondary"
+          id="retry-button"
+        >
+          Try Again ↻
+        </button>
+        
+        {{#if supportUrl}}
+        <a 
+          href="{{supportUrl}}" 
+          class="action-button secondary"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Get Help →
+        </a>
+        {{/if}}
+      </div>
+      
+      <details class="technical-details">
+        <summary class="text-small technical-summary">Technical Details</summary>
+        <div class="technical-content">
+          <div class="text-small">
+            <strong>Timestamp:</strong> <span id="error-timestamp"></span><br>
+            <strong>User Agent:</strong> <span id="user-agent"></span><br>
+            <strong>URL:</strong> <span id="current-url"></span><br>
+            {{#if stack}}
+            <strong>Stack Trace:</strong>
+            <pre class="stack-trace">{{stack}}</pre>
+            {{/if}}
+          </div>
+        </div>
+      </details>
+      
+      <div class="decorative-lines" aria-hidden="true">
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+        <div class="decorative-line"></div>
+      </div>
+    </main>
   </div>
   
-  <script>
-    // Add touchstart event listeners for mobile devices
-    document.querySelectorAll('a').forEach(link => {
-      link.addEventListener('touchstart', function() {
-        this.classList.add('touched');
-      });
-      link.addEventListener('touchend', function() {
-        this.classList.remove('touched');
-      });
-    });
-  </script>
+  <script src="/public/scripts/utils.js"></script>
+  <script src="/public/scripts/enhancements.js"></script>
 </body>
 </html>

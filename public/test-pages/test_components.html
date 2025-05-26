@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Component Testing - Design System Showcase</title>
+  
+  <link rel="stylesheet" href="../styles/design-system.css">
+  <link rel="stylesheet" href="../styles/components.css">
+  <link rel="stylesheet" href="../styles/dashboard.css">
+</head>
+<body>
+  <div class="test-container">
+    <header class="test-header">
+      <h1 class="text-huge">Component Testing Environment</h1>
+      <p class="text-medium">Design system components and patterns showcase</p>
+    </header>
+
+    <section class="test-section">
+      <div class="test-section-header">Typography Scale</div>
+      <div class="test-section-content">
+        <div class="typography-demo">
+          <h1 class="text-huge">Huge Text - 72px</h1>
+          <h2 class="text-large">Large Text - 48px</h2>
+          <h3 class="text-medium">Medium Text - 24px</h3>
+          <p class="text-small">Small Text - 16px</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="test-section">
+      <div class="test-section-header">Color Palette</div>
+      <div class="test-section-content">
+        <div class="color-palette">
+          <div class="color-swatch">
+            <div class="color-preview synced-bg">Synced</div>
+            <div class="color-info">#17d827</div>
+          </div>
+          <div class="color-swatch">
+            <div class="color-preview not-synced-bg">Not Synced</div>
+            <div class="color-info">#ff0000</div>
+          </div>
+          <div class="color-swatch">
+            <div class="color-preview text-primary-bg">Primary</div>
+            <div class="color-info">#000000</div>
+          </div>
+          <div class="color-swatch">
+            <div class="color-preview text-secondary-bg">Secondary</div>
+            <div class="color-info">#e1e1e1</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="test-section">
+      <div class="test-section-header">Buttons</div>
+      <div class="test-section-content">
+        <div class="button-grid">
+          <div class="component-demo">
+            <div class="component-demo-header">Action Buttons</div>
+            <div class="component-demo-content">
+              <button class="action-button primary">Primary Action</button>
+              <button class="action-button secondary">Secondary Action</button>
+              <button class="action-button danger">Danger Action</button>
+            </div>
+          </div>
+
+          <div class="component-demo">
+            <div class="component-demo-header">Standard Buttons</div>
+            <div class="component-demo-content">
+              <button class="btn btn-primary">Primary Button</button>
+              <button class="btn btn-secondary">Secondary Button</button>
+              <button class="btn btn-success">Success Button</button>
+              <button class="btn btn-danger">Danger Button</button>
+            </div>
+          </div>
+
+          <div class="component-demo">
+            <div class="component-demo-header">Button States</div>
+            <div class="component-demo-content">
+              <button class="btn btn-primary">Normal</button>
+              <button class="btn btn-primary" disabled>Disabled</button>
+              <button class="btn btn-primary btn-loading">Loading</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="test-section">
+      <div class="test-section-header">Status Indicators</div>
+      <div class="test-section-content">
+        <div class="component-grid">
+          <div class="component-demo">
+            <div class="component-demo-header">Status Indicators</div>
+            <div class="component-demo-content">
+              <div class="status-demo">
+                <div class="status-indicator synced"></div>
+                <span>Synced State</span>
+              </div>
+              <div class="status-demo">
+                <div class="status-indicator not-synced"></div>
+                <span>Not Synced State</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="component-demo">
+            <div class="component-demo-header">Status Dots</div>
+            <div class="component-demo-content">
+              <div class="status-demo">
+                <div class="status-dot success"></div>
+                <span>Success</span>
+              </div>
+              <div class="status-demo">
+                <div class="status-dot danger"></div>
+                <span>Danger</span>
+              </div>
+              <div class="status-demo">
+                <div class="status-dot warning"></div>
+                <span>Warning</span>
+              </div>
+              <div class="status-demo">
+                <div class="status-dot info"></div>
+                <span>Info</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="component-demo">
+            <div class="component-demo-header">Badges</div>
+            <div class="component-demo-content">
+              <span class="badge badge-success">Success</span>
+              <span class="badge badge-danger">Danger</span>
+              <span class="badge badge-warning">Warning</span>
+              <span class="badge badge-info">Info</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="test-section">
+      <div class="test-section-header">Progress Components</div>
+      <div class="test-section-content">
+        <div class="component-grid">
+          <div class="component-demo">
+            <div class="component-demo-header">Progress Bars</div>
+            <div class="component-demo-content">
+              <div class="progress">
+                <div class="progress-bar" data-width="75"></div>
+              </div>
+              <div class="progress">
+                <div class="progress-bar animated" data-width="50"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="component-demo">
+            <div class="component-demo-header">Loading Spinners</div>
+            <div class="component-demo-content">
+              <div class="spinner"></div>
+              <div class="spinner spinner-large"></div>
+              <div class="loading-dots">
+                <div class="loading-dot"></div>
+                <div class="loading-dot"></div>
+                <div class="loading-dot"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="test-section">
+      <div class="test-section-header">Cards & Alerts</div>
+      <div class="test-section-content">
+        <div class="component-grid">
+          <div class="component-demo">
+            <div class="component-demo-header">Cards</div>
+            <div class="component-demo-content">
+              <div class="card">
+                <div class="card-header">
+                  <div class="card-title">Card Title</div>
+                  <div class="card-subtitle">Card subtitle</div>
+                </div>
+                <div class="card-body">
+                  <p>This is the card content area.</p>
+                </div>
+                <div class="card-footer">
+                  <button class="btn btn-primary btn-small">Action</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="component-demo">
+            <div class="component-demo-header">Alerts</div>
+            <div class="component-demo-content">
+              <div class="alert alert-success">Success alert message</div>
+              <div class="alert alert-danger">Danger alert message</div>
+              <div class="alert alert-warning">Warning alert message</div>
+              <div class="alert alert-info">Info alert message</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="test-section">
+      <div class="test-section-header">Sync Components</div>
+      <div class="test-section-content">
+        <div class="component-grid">
+          <div class="component-demo">
+            <div class="component-demo-header">Sync Stats</div>
+            <div class="component-demo-content">
+              <div class="sync-stats">
+                <div class="stat-group">
+                  <div class="stat-item">
+                    <span class="stat-number">165</span>
+                    <span class="stat-label">Added</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-number">50</span>
+                    <span class="stat-label">Updated</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-number">0</span>
+                    <span class="stat-label">Deleted</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-number">1150</span>
+                    <span class="stat-label">Skipped</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="component-demo">
+            <div class="component-demo-header">Efficiency Display</div>
+            <div class="component-demo-content">
+              <div class="efficiency-display">
+                <span class="efficiency-number">97%</span>
+                <span class="efficiency-label">Efficiency</span>
+                <div class="efficiency-status">🚀 Excellent efficiency!</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="component-demo">
+            <div class="component-demo-header">Status Messages</div>
+            <div class="component-demo-content">
+              <div class="status-message synced">All bookmarks are synchronized</div>
+              <div class="status-message not-synced">1300 bookmarks need synchronization</div>
+              <div class="status-message processing">Sync in progress...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="test-section">
+      <div class="test-section-header">Spacing System</div>
+      <div class="test-section-content">
+        <div class="spacing-demo">
+          <div class="spacing-box spacing-xs">XS</div>
+          <div class="spacing-box spacing-sm">SM</div>
+          <div class="spacing-box spacing-md">MD</div>
+          <div class="spacing-box spacing-lg">LG</div>
+          <div class="spacing-box spacing-xl">XL</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="test-section">
+      <div class="test-section-header">Responsive Test</div>
+      <div class="test-section-content">
+        <div class="responsive-test">
+          <div class="responsive-indicator">Current viewport: <span id="viewport-size"></span></div>
+          <div class="dashboard-actions">
+            <button class="action-button primary">Responsive Button 1</button>
+            <button class="action-button secondary">Responsive Button 2</button>
+            <button class="action-button danger">Responsive Button 3</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="../scripts/utils.js"></script>
+  <script src="../scripts/enhancements.js"></script>
+</body>
+</html>
