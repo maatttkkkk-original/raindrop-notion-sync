@@ -8,7 +8,6 @@ const path = require('path');
 const { getAllRaindrops, getRaindropTotal, getRecentRaindrops } = require('../services/raindrop');
 const { getNotionPages, getTotalNotionPages, createNotionPage, updateNotionPage, deleteNotionPage } = require('../services/notion');
 
-
 // Helper functions
 function normalizeUrl(url) {
   try {
@@ -32,15 +31,8 @@ function chunkArray(arr, size) {
   }
   return result;
 }
-function chunkArray(arr, size) {
-  const result = [];
-  for (let i = 0; i < arr.length; i += size) {
-    result.push(arr.slice(i, i + size));
-  }
-  return result;
-}
 
-// === BASIC CACHE SYSTEM ===
+// === CACHE SYSTEM ===
 const CACHE_CONFIG = {
   cacheDir: '/tmp/raindrop-cache',
   raindropsFile: 'raindrops-data.json',
@@ -85,12 +77,8 @@ function getCacheStatus() {
   } catch (error) {
     return { exists: false, valid: false, error: error.message };
   }
-
-  function getCacheStatus() {
-  // ... existing code ...
 }
 
-// ADD THIS FUNCTION:
 async function writeCacheData(raindrops) {
   try {
     if (!ensureCacheDir()) {
@@ -116,7 +104,6 @@ async function writeCacheData(raindrops) {
   }
 }
 
-}
 async function readCacheData() {
   try {
     const cachePath = getCacheFilePath();
@@ -644,7 +631,10 @@ module.exports = async (req, res) => {
       }
       return;
     }
-  if (pathname === '/api/cache-test') {
+    
+    // === CACHE ENDPOINTS ===
+    
+    if (pathname === '/api/cache-test') {
       try {
         const status = getCacheStatus();
         res.json({
@@ -687,7 +677,8 @@ module.exports = async (req, res) => {
       }
       return;
     }
- if (pathname === '/api/cache-read') {
+    
+    if (pathname === '/api/cache-read') {
       try {
         const cacheData = await readCacheData();
         res.json({
@@ -707,6 +698,7 @@ module.exports = async (req, res) => {
       }
       return;
     }
+    
     if (pathname === '/api/cache-combo-test') {
       try {
         // Step 1: Create cache
@@ -733,7 +725,6 @@ module.exports = async (req, res) => {
       return;
     }
     
-
     if (pathname === '/sync-stream') {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
