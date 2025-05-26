@@ -32,6 +32,13 @@ function chunkArray(arr, size) {
   }
   return result;
 }
+function chunkArray(arr, size) {
+  const result = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
 
 // === BASIC CACHE SYSTEM ===
 const CACHE_CONFIG = {
@@ -59,13 +66,16 @@ function getCacheFilePath() {
 function getCacheStatus() {
   try {
     const cachePath = getCacheFilePath();
+    
     if (!fs.existsSync(cachePath)) {
       return { exists: false, valid: false, message: 'No cache found' };
     }
+    
     const stats = fs.statSync(cachePath);
     const age = Date.now() - stats.mtime.getTime();
     const ageMinutes = Math.round(age / (1000 * 60));
     const isValid = age <= CACHE_CONFIG.maxAge;
+    
     return {
       exists: true,
       valid: isValid,
@@ -75,13 +85,18 @@ function getCacheStatus() {
   } catch (error) {
     return { exists: false, valid: false, error: error.message };
   }
+
+  function getCacheStatus() {
+  // ... existing code ...
 }
 
+// ADD THIS FUNCTION:
 async function writeCacheData(raindrops) {
   try {
     if (!ensureCacheDir()) {
       throw new Error('Failed to create cache directory');
     }
+    
     const cachePath = getCacheFilePath();
     const cacheData = {
       raindrops,
@@ -89,11 +104,49 @@ async function writeCacheData(raindrops) {
       count: raindrops.length,
       cachedAt: new Date().toISOString()
     };
+    
     fs.writeFileSync(cachePath, JSON.stringify(cacheData), 'utf8');
+    
     console.log(`✅ Cache written: ${raindrops.length} items`);
     return { success: true, itemCount: raindrops.length };
+    
   } catch (error) {
     console.error('❌ Cache write failed:', error.message);
+    throw error;
+  }
+}
+
+}
+async function readCacheData() {
+  try {
+    const cachePath = getCacheFilePath();
+    
+    if (!fs.existsSync(cachePath)) {
+      throw new Error('Cache file not found');
+    }
+    
+    const cacheRaw = fs.readFileSync(cachePath, 'utf8');
+    const cacheData = JSON.parse(cacheRaw);
+    
+    // Check if cache is still valid
+    const age = Date.now() - cacheData.timestamp;
+    if (age > CACHE_CONFIG.maxAge) {
+      throw new Error('Cache expired');
+    }
+    
+    console.log(`✅ Cache read: ${cacheData.count} items`);
+    return {
+      success: true,
+      raindrops: cacheData.raindrops,
+      metadata: {
+        count: cacheData.count,
+        age: Math.round(age / (1000 * 60)), // age in minutes
+        cachedAt: cacheData.cachedAt
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ Cache read failed:', error.message);
     throw error;
   }
 }
@@ -634,7 +687,27 @@ module.exports = async (req, res) => {
       }
       return;
     }
- 
+ if (pathname === '/api/cache-read') {
+      try {
+        const cacheData = await readCacheData();
+        res.json({
+          success: true,
+          message: `Read ${cacheData.metadata.count} items from cache`,
+          metadata: cacheData.metadata,
+          sampleItems: cacheData.raindrops.slice(0, 3).map(item => ({
+            title: item.title,
+            link: item.link
+          }))
+        });
+      } catch (error) {
+        res.status(500).json({ 
+          success: false, 
+          error: error.message 
+        });
+      }
+      return;
+    }
+    
     if (pathname === '/sync-stream') {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
