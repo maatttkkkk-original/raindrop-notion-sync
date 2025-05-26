@@ -707,7 +707,33 @@ module.exports = async (req, res) => {
       }
       return;
     }
+    if (pathname === '/api/cache-combo-test') {
+      try {
+        // Step 1: Create cache
+        console.log('🔄 Creating cache...');
+        const raindrops = await getAllRaindrops(5);
+        await writeCacheData(raindrops);
+        
+        // Step 2: Immediately try to read it
+        console.log('🔄 Reading cache...');
+        const cacheData = await readCacheData();
+        
+        res.json({
+          success: true,
+          message: 'Cache create + read test successful',
+          created: raindrops.length,
+          read: cacheData.metadata.count
+        });
+      } catch (error) {
+        res.status(500).json({ 
+          success: false, 
+          error: error.message 
+        });
+      }
+      return;
+    }
     
+
     if (pathname === '/sync-stream') {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
