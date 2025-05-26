@@ -572,9 +572,22 @@ module.exports = async (req, res) => {
               btn.disabled = true;
               btn.textContent = 'Sync Running...';
               status.style.display = 'block';
-              status.innerHTML = '';
+              status.innerHTML = '<div class="message info">🚀 Starting Smart Diff Sync...</div>';
               
               connectToSync('/sync-stream?password=${password}&mode=${syncMode}');
+            }
+            
+            function addMessage(message, type = 'info') {
+              const status = document.getElementById('status');
+              const div = document.createElement('div');
+              div.className = 'message ' + type;
+              div.textContent = message;
+              status.appendChild(div);
+              status.scrollTop = status.scrollHeight;
+              
+              // Add timestamp for better tracking
+              const timestamp = new Date().toLocaleTimeString();
+              console.log(\`[\${timestamp}] \${type.toUpperCase()}: \${message}\`);
             }
             
             function connectToSync(url) {
@@ -582,40 +595,58 @@ module.exports = async (req, res) => {
                 currentEventSource.close();
               }
               
+              addMessage('🔗 Connecting to sync stream...', 'info');
               currentEventSource = new EventSource(url);
               
+              currentEventSource.onopen = function() {
+                addMessage('✅ Connected to sync stream', 'success');
+              };
+              
               currentEventSource.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                const div = document.createElement('div');
-                div.className = 'message ' + (data.type || 'info');
-                div.textContent = data.message;
-                status.appendChild(div);
-                status.scrollTop = status.scrollHeight;
-                
-                // Handle automatic continuation
-                if (data.continueWith) {
-                  setTimeout(() => {
-                    connectToSync(data.continueWith);
-                  }, 1000); // 1 second delay between chunks
-                }
-                
-                if (data.complete) {
-                  currentEventSource.close();
-                  currentEventSource = null;
-                  document.getElementById('syncBtn').disabled = false;
-                  document.getElementById('syncBtn').textContent = 'Start ${syncMode === 'all' ? 'Smart Diff' : 'Incremental'} Sync';
+                try {
+                  const data = JSON.parse(event.data);
+                  
+                  // Add the main message
+                  if (data.message) {
+                    addMessage(data.message, data.type || 'info');
+                  }
+                  
+                  // Handle automatic continuation
+                  if (data.continueWith) {
+                    addMessage('⏳ Preparing next chunk...', 'info');
+                    setTimeout(() => {
+                      addMessage('🔄 Continuing with next chunk', 'info');
+                      connectToSync(data.continueWith);
+                    }, 1000); // 1 second delay between chunks
+                  }
+                  
+                  // Handle completion
+                  if (data.complete) {
+                    currentEventSource.close();
+                    currentEventSource = null;
+                    document.getElementById('syncBtn').disabled = false;
+                    document.getElementById('syncBtn').textContent = 'Start ${syncMode === 'all' ? 'Smart Diff' : 'Incremental'} Sync';
+                    
+                    // Show final results
+                    if (data.finalCounts) {
+                      const counts = data.finalCounts;
+                      addMessage(\`🎉 SYNC COMPLETE! Added: \${counts.added}, Updated: \${counts.updated}, Skipped: \${counts.skipped}, Deleted: \${counts.deleted}\`, 'complete');
+                    }
+                  }
+                  
+                } catch (error) {
+                  console.error('Error parsing sync message:', error);
+                  addMessage('❌ Error parsing sync data', 'error');
                 }
               };
               
-              currentEventSource.onerror = function() {
+              currentEventSource.onerror = function(error) {
+                console.error('EventSource error:', error);
                 currentEventSource.close();
                 currentEventSource = null;
                 document.getElementById('syncBtn').disabled = false;
                 document.getElementById('syncBtn').textContent = 'Start ${syncMode === 'all' ? 'Smart Diff' : 'Incremental'} Sync';
-                const div = document.createElement('div');
-                div.className = 'message error';
-                div.textContent = '❌ Connection error';
-                status.appendChild(div);
+                addMessage('❌ Connection error - sync interrupted', 'error');
               };
             }
           </script>
