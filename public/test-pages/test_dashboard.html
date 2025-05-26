@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adaptive Dashboard - Design Testing</title>
+  
+  <!-- Reference your existing CSS structure -->
+  <link rel="stylesheet" href="../styles/design-system.css">
+  <link rel="stylesheet" href="../styles/dashboard.css">
+  
+  <style>
+    /* Adaptive Dashboard Styles - Based on Your Figma Design */
+    
+    /* Helvetica Neue Font */
+    @font-face {
+      font-family: 'Helvetica Neue';
+      src: url('../fonts/helvetica-neue.woff2') format('woff2'),
+           url('../fonts/helvetica-neue.woff') format('woff');
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    /* Design System Variables - Matching Your Figma Colors */
+    :root {
+      --font-primary: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      
+      /* Your Exact Colors from Figma */
+      --color-text-black: rgba(0, 0, 0, 1);
+      --color-synced: rgba(23, 216, 39, 1);
+      --color-not-synced: rgba(255, 0, 0, 1);
+      --color-text-white: rgba(255, 255, 255, 1);
+      --color-text-gray: rgba(225, 225, 225, 1);
+      
+      /* Responsive Typography */
+      --font-size-huge: clamp(36px, 8vw, 72px);
+      --font-size-large: clamp(24px, 6vw, 48px);
+      --letter-spacing-tight: -0.05em;
+      
+      /* Spacing System */
+      --spacing-xs: clamp(8px, 2vw, 16px);
+      --spacing-sm: clamp(16px, 3vw, 24px);
+      --spacing-md: clamp(24px, 4vw, 48px);
+      --spacing-lg: clamp(48px, 6vw, 72px);
+      
+      /* Container Widths */
+      --container-max: 1200px;
+      --container-padding: clamp(16px, 4vw, 48px);
+    }
+
+    /* Reset */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-primary);
+      width: 100%;
+      min-height: 100vh;
+      background: white;
+      overflow-x: hidden;
+      line-height: 1.1;
+    }
+
+    /* Adaptive Container */
+    .dashboard-container {
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding: var(--container-padding);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+    }
+
+    /* Status Indicator - Responsive */
+    .status-indicator {
+      width: clamp(80px, 20vw, 120px);
+      height: clamp(16px, 4vw, 24px);
+      margin-bottom: var(--spacing-md);
+      border-radius: 2px;
+      transition: all 0.3s ease;
+    }
+
+    .status-indicator.synced {
+      background: var(--color-synced);
+    }
+
+    .status-indicator.not-synced {
+      background: var(--color-not-synced);
+    }
+
+    .status-indicator.processing {
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    /* Typography - Matching Your Figma Design */
+    .title {
+      font-size: var(--font-size-huge);
+      font-weight: normal;
+      letter-spacing: var(--letter-spacing-tight);
+      color: var(--color-text-black);
+      margin-bottom: var(--spacing-sm);
+      line-height: 0.9;
+    }
+
+    .count-display {
+      font-size: var(--font-size-huge);
+      font-weight: normal;
+      letter-spacing: var(--letter-spacing-tight);
+      margin-bottom: var(--spacing-xs);
+      line-height: 0.9;
+      transition: all 0.3s ease;
+    }
+
+    .count-display:hover {
+      transform: translateX(4px);
+    }
+
+    /* State-specific colors */
+    .count-display.synced {
+      color: var(--color-synced);
+    }
+
+    .count-display.not-synced {
+      color: var(--color-not-synced);
+    }
+
+    .count-display.neutral {
+      color: var(--color-text-black);
+    }
+
+    /* Status Message */
+    .status-message {
+      font-size: var(--font-size-huge);
+      font-weight: normal;
+      letter-spacing: var(--letter-spacing-tight);
+      margin: var(--spacing-md) 0;
+      padding: var(--spacing-sm) var(--spacing-md);
+      border-radius: 8px;
+      line-height: 0.9;
+      transition: all 0.3s ease;
+    }
+
+    .status-message.synced {
+      background: var(--color-synced);
+      color: var(--color-text-white);
+    }
+
+    .status-message.not-synced {
+      background: var(--color-not-synced);
+      color: var(--color-text-white);
+    }
+
+    .status-message.processing {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: var(--color-text-white);
+    }
+
+    /* Action Buttons */
+    .action-button {
+      font-size: var(--font-size-huge);
+      font-family: var(--font-primary);
+      font-weight: normal;
+      letter-spacing: var(--letter-spacing-tight);
+      background: none;
+      border: none;
+      cursor: pointer;
+      margin-bottom: var(--spacing-sm);
+      transition: all 0.3s ease;
+      text-align: left;
+      padding: var(--spacing-xs) 0;
+      line-height: 0.9;
+      color: var(--color-text-black);
+    }
+
+    .action-button.secondary {
+      color: var(--color-text-gray);
+    }
+
+    .action-button:hover {
+      transform: translateX(8px);
+      opacity: 0.8;
+    }
+
+    .action-button:active {
+      transform: translateX(4px);
+    }
+
+    /* Decorative Lines - Responsive */
+    .decorative-lines {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1;
+      opacity: 0.1;
+    }
+
+    .decorative-line {
+      position: absolute;
+      background: var(--color-text-black);
+      transform-origin: center;
+    }
+
+    /* Generate decorative line positions - responsive */
+    .line-1 { width: 2px; height: 40%; top: 10%; left: 15%; transform: rotate(15deg); }
+    .line-2 { width: 1px; height: 60%; top: 20%; right: 20%; transform: rotate(-25deg); }
+    .line-3 { width: 1px; height: 30%; top: 60%; left: 25%; transform: rotate(45deg); }
+    .line-4 { width: 2px; height: 50%; top: 15%; left: 60%; transform: rotate(-15deg); }
+    .line-5 { width: 1px; height: 35%; bottom: 20%; right: 30%; transform: rotate(30deg); }
+    .line-6 { width: 1px; height: 45%; bottom: 10%; left: 40%; transform: rotate(-40deg); }
+    .line-7 { width: 2px; height: 25%; top: 40%; right: 15%; transform: rotate(60deg); }
+    .line-8 { width: 1px; height: 55%; bottom: 25%; left: 10%; transform: rotate(-10deg); }
+
+    /* State Switcher for Testing */
+    .state-switcher {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      z-index: 1000;
+    }
+
+    .state-switcher h3 {
+      margin-bottom: 12px;
+      font-size: 16px;
+      color: var(--color-text-black);
+    }
+
+    .state-switcher button {
+      display: block;
+      width: 100%;
+      margin-bottom: 8px;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      background: white;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+      transition: all 0.2s ease;
+    }
+
+    .state-switcher button:hover {
+      background: #f5f5f5;
+    }
+
+    .state-switcher button.active {
+      background: var(--color-synced);
+      color: white;
+      border-color: var(--color-synced);
+    }
+
+    /* Loading States */
+    .loading {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .loading::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+      animation: shimmer 1.5s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    /* Responsive Breakpoints */
+    @media (max-width: 768px) {
+      .decorative-lines {
+        display: none; /* Hide on mobile for cleaner look */
+      }
+      
+      .state-switcher {
+        position: relative;
+        top: auto;
+        right: auto;
+        margin-bottom: var(--spacing-md);
+      }
+      
+      .dashboard-container {
+        padding: var(--spacing-sm);
+      }
+    }
+
+    @media (max-width: 480px) {
+      .action-button:hover {
+        transform: none; /* Disable hover transforms on touch devices */
+      }
+    }
+
+    /* High contrast mode */
+    @media (prefers-contrast: high) {
+      .status-indicator,
+      .status-message {
+        border: 2px solid currentColor;
+      }
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation: none !important;
+        transition: none !important;
+      }
+      
+      .action-button:hover {
+        transform: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- State Switcher for Testing -->
+  <div class="state-switcher">
+    <h3>Test States:</h3>
+    <button onclick="setState('synced')" class="active">Synced</button>
+    <button onclick="setState('not-synced')">Not Synced</button>
+    <button onclick="setState('processing')">Processing</button>
+    <button onclick="setState('error')">Error</button>
+    <button onclick="setState('loading')">Loading</button>
+  </div>
+
+  <!-- Main Dashboard -->
+  <div class="dashboard-container">
+    <!-- Status Indicator -->
+    <div class="status-indicator synced" id="statusIndicator"></div>
+    
+    <!-- Title -->
+    <h1 class="title">Raindrop/Notion Sync</h1>
+    
+    <!-- Count Displays -->
+    <div class="count-display synced" id="raindropCount">
+      1365 Raindrop Bookmarks
+    </div>
+    
+    <div class="count-display synced" id="notionCount">
+      1365 Notion Pages
+    </div>
+    
+    <!-- Status Message -->
+    <div class="status-message synced" id="statusMessage">
+      Synced
+    </div>
+    
+    <!-- Action Buttons -->
+    <div class="actions">
+      <button class="action-button" id="primaryAction">
+        Sync New? ↻
+      </button>
+      
+      <button class="action-button secondary" id="secondaryAction">
+        Reset / FullSync
+      </button>
+    </div>
+    
+    <!-- Decorative Lines (Hidden on Mobile) -->
+    <div class="decorative-lines">
+      <div class="decorative-line line-1"></div>
+      <div class="decorative-line line-2"></div>
+      <div class="decorative-line line-3"></div>
+      <div class="decorative-line line-4"></div>
+      <div class="decorative-line line-5"></div>
+      <div class="decorative-line line-6"></div>
+      <div class="decorative-line line-7"></div>
+      <div class="decorative-line line-8"></div>
+    </div>
+  </div>
+
+  <script>
+    // State Management for Testing
+    const states = {
+      synced: {
+        indicator: 'synced',
+        raindropCount: '1365 Raindrop Bookmarks',
+        raindropClass: 'synced',
+        notionCount: '1365 Notion Pages',
+        notionClass: 'synced',
+        statusMessage: 'Synced',
+        statusClass: 'synced',
+        primaryAction: 'Sync New? ↻',
+        secondaryAction: 'Reset / FullSync'
+      },
+      'not-synced': {
+        indicator: 'not-synced',
+        raindropCount: '1365 Raindrop Bookmarks',
+        raindropClass: 'not-synced',
+        notionCount: '65 Notion Pages',
+        notionClass: 'not-synced',
+        statusMessage: '1300 Not Synced',
+        statusClass: 'not-synced',
+        primaryAction: 'Sync New? ↻',
+        secondaryAction: 'Reset / FullSync'
+      },
+      processing: {
+        indicator: 'processing',
+        raindropCount: '1365 Raindrop Bookmarks',
+        raindropClass: 'neutral',
+        notionCount: '... Notion Pages',
+        notionClass: 'neutral',
+        statusMessage: 'Sync In Progress',
+        statusClass: 'processing',
+        primaryAction: 'Stop!',
+        secondaryAction: 'Please Wait...'
+      },
+      error: {
+        indicator: 'not-synced',
+        raindropCount: 'Error Loading',
+        raindropClass: 'not-synced',
+        notionCount: 'Error Loading',
+        notionClass: 'not-synced',
+        statusMessage: 'Error',
+        statusClass: 'not-synced',
+        primaryAction: 'Retry ↻',
+        secondaryAction: 'Back ↤'
+      },
+      loading: {
+        indicator: 'processing',
+        raindropCount: '... Raindrop Bookmarks',
+        raindropClass: 'neutral loading',
+        notionCount: '... Notion Pages',
+        notionClass: 'neutral loading',
+        statusMessage: 'Loading...',
+        statusClass: 'processing',
+        primaryAction: 'Please Wait...',
+        secondaryAction: 'Cancel'
+      }
+    };
+
+    function setState(stateName) {
+      const state = states[stateName];
+      if (!state) return;
+      
+      // Update active button
+      document.querySelectorAll('.state-switcher button').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      event.target.classList.add('active');
+      
+      // Update indicator
+      const indicator = document.getElementById('statusIndicator');
+      indicator.className = `status-indicator ${state.indicator}`;
+      
+      // Update counts
+      const raindropCount = document.getElementById('raindropCount');
+      raindropCount.textContent = state.raindropCount;
+      raindropCount.className = `count-display ${state.raindropClass}`;
+      
+      const notionCount = document.getElementById('notionCount');
+      notionCount.textContent = state.notionCount;
+      notionCount.className = `count-display ${state.notionClass}`;
+      
+      // Update status message
+      const statusMessage = document.getElementById('statusMessage');
+      statusMessage.textContent = state.statusMessage;
+      statusMessage.className = `status-message ${state.statusClass}`;
+      
+      // Update action buttons
+      document.getElementById('primaryAction').textContent = state.primaryAction;
+      document.getElementById('secondaryAction').textContent = state.secondaryAction;
+      
+      console.log(`State changed to: ${stateName}`);
+    }
+
+    // Add click handlers for actions
+    document.getElementById('primaryAction').addEventListener('click', () => {
+      console.log('Primary action clicked');
+      // In real app, this would trigger sync
+    });
+
+    document.getElementById('secondaryAction').addEventListener('click', () => {
+      console.log('Secondary action clicked');
+      // In real app, this would trigger reset/fullsync
+    });
+
+    // Simulate responsive behavior
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        console.log('Window resized:', window.innerWidth + 'x' + window.innerHeight);
+      }, 250);
+    });
+
+    // Log initial state
+    console.log('Adaptive dashboard loaded in synced state');
+    console.log('Available states:', Object.keys(states));
+  </script>
+</body>
+</html>

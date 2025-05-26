@@ -1,10 +1,11 @@
-// Two-Mode Sync System: Reset & Full Sync + Smart Incremental with Temporal Filtering
+// Progressive Enhancement Sync System - Base Layer
+// Single smart function handles all sync scenarios
 
-// Import your optimized service files
+// Import your excellent service files
 const { getAllRaindrops, getRaindropTotal, getRecentRaindrops } = require('../services/raindrop');
 const { getNotionPages, getTotalNotionPages, createNotionPage, updateNotionPage, deleteNotionPage } = require('../services/notion');
 
-// Helper functions
+// Helper functions (kept from your original)
 function normalizeUrl(url) {
   try {
     const u = new URL(url);
@@ -28,7 +29,7 @@ function chunkArray(arr, size) {
   return result;
 }
 
-// Global sync management
+// Global sync management (simplified)
 let GLOBAL_SYNC_LOCK = false;
 let SYNC_START_TIME = null;
 let SYNC_LOCK_ID = null;
@@ -47,193 +48,22 @@ function broadcastSSEData(data) {
   }
 }
 
-// MODE 1: RESET & FULL SYNC (Simple approach)
-async function performResetAndFullSync(limit = 0) {
-  const lockId = currentSync ? currentSync.lockId : 'unknown';
-  console.log(`🔄 Reset & Full Sync starting - Lock ID: ${lockId}`);
-  
-  let createdCount = 0;
-  let deletedCount = 0;
-  let failedCount = 0;
-  
-  try {
-    // Helper to send progress updates
-    const sendUpdate = (message, type = '') => {
-      console.log(`🔄 [${lockId}] ${message}`);
-      
-      const updateData = {
-        message: `${message}`,
-        type,
-        counts: { created: createdCount, deleted: deletedCount, failed: failedCount },
-        lockInfo: {
-          locked: GLOBAL_SYNC_LOCK,
-          lockId: lockId,
-          duration: SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0
-        }
-      };
-      
-      if (currentSync) {
-        currentSync.counts = updateData.counts;
-      }
-      
-      broadcastSSEData(updateData);
-    };
-    
-    sendUpdate('🔄 Starting Reset & Full Sync', 'info');
-    
-    // === STEP 1: DELETE ALL EXISTING NOTION PAGES ===
-    sendUpdate('🗑️ Fetching existing Notion pages for deletion...', 'processing');
-    
-    let existingPages = [];
-    try {
-      existingPages = await getNotionPages();
-    } catch (error) {
-      throw new Error(`Failed to fetch existing Notion pages: ${error.message}`);
-    }
-    
-    if (existingPages.length > 0) {
-      sendUpdate(`🗑️ Deleting ${existingPages.length} existing Notion pages...`, 'processing');
-      
-      // Delete in batches using PROVEN WORKING TIMINGS
-      const deleteChunks = chunkArray(existingPages, 10); // 10 items per batch
-      
-      for (let i = 0; i < deleteChunks.length; i++) {
-        const chunk = deleteChunks[i];
-        sendUpdate(`🗑️ Deleting batch ${i + 1}/${deleteChunks.length} (${chunk.length} pages)`, 'processing');
-        
-        for (const page of chunk) {
-          try {
-            await deleteNotionPage(page.id);
-            deletedCount++;
-            
-            if (deletedCount % 20 === 0) {
-              sendUpdate(`🗑️ Deleted ${deletedCount}/${existingPages.length} pages`, 'processing');
-            }
-            
-            // PROVEN WORKING DELAY: 200ms between deletions
-            await new Promise(resolve => setTimeout(resolve, 200));
-            
-          } catch (error) {
-            sendUpdate(`❌ Failed to delete page: ${error.message}`, 'failed');
-            failedCount++;
-            await new Promise(resolve => setTimeout(resolve, 400));
-          }
-        }
-        
-        // PROVEN WORKING DELAY: 2000ms between batches
-        if (i < deleteChunks.length - 1) {
-          sendUpdate(`⏳ Deletion batch ${i + 1} complete, waiting...`, 'info');
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-      }
-      
-      sendUpdate(`✅ Database reset complete: ${deletedCount} pages deleted`, 'success');
-    } else {
-      sendUpdate('✅ Notion database is already empty', 'info');
-    }
-    
-    // === STEP 2: FETCH ALL RAINDROPS ===
-    sendUpdate('📡 Fetching all Raindrop bookmarks...', 'fetching');
-    
-    let raindrops = [];
-    try {
-      raindrops = await getAllRaindrops(limit);
-    } catch (error) {
-      throw new Error(`Failed to fetch raindrops: ${error.message}`);
-    }
-    
-    sendUpdate(`✅ Found ${raindrops.length} Raindrop bookmarks to sync`, 'success');
-    
-    if (raindrops.length === 0) {
-      sendUpdate('No raindrops to sync. Process complete.', 'complete');
-      broadcastSSEData({ complete: true });
-      return { complete: true };
-    }
-    
-    // === STEP 3: CREATE ALL PAGES ===
-    sendUpdate(`📝 Creating ${raindrops.length} new Notion pages...`, 'processing');
-    
-    // Create in batches using PROVEN WORKING TIMINGS from March 17th
-    const batches = chunkArray(raindrops, 10); // 10 items per batch (proven to work)
-    const batchCount = batches.length;
-    
-    for (let i = 0; i < batchCount; i++) {
-      const batch = batches[i];
-      sendUpdate(`📝 Processing batch ${i + 1}/${batchCount} (${batch.length} pages)`, 'processing');
-      
-      for (const item of batch) {
-        try {
-          const result = await createNotionPage(item);
-          if (result.success) {
-            createdCount++;
-            sendUpdate(`✅ Created: "${item.title}"`, 'added');
-            
-            if (createdCount % 20 === 0) {
-              sendUpdate(`📊 Progress: ${createdCount}/${raindrops.length} pages created`, 'info');
-            }
-          } else {
-            sendUpdate(`❌ Failed to create: "${item.title}"`, 'failed');
-            failedCount++;
-          }
-          
-          // PROVEN WORKING DELAY: 200ms between operations
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
-        } catch (error) {
-          sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
-          failedCount++;
-          // Longer delay on error
-          await new Promise(resolve => setTimeout(resolve, 400));
-        }
-      }
-      
-      // PROVEN WORKING DELAY: 1000ms between batches (increased to 2000ms for extra safety)
-      if (i < batchCount - 1) {
-        sendUpdate(`⏳ Batch ${i + 1} complete, waiting before next batch...`, 'info');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-    }
-    
-    // === FINAL SUMMARY ===
-    const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
-    
-    sendUpdate(`🎉 Reset & Full Sync completed in ${duration}s!`, 'complete');
-    sendUpdate(`📊 Results: ${createdCount} created, ${deletedCount} deleted, ${failedCount} failed`, 'summary');
-    
-    console.log(`✅ [${lockId}] RESET & FULL SYNC COMPLETE: ${duration}s`);
-    
-    if (currentSync) {
-      currentSync.completed = true;
-      currentSync.isRunning = false;
-    }
-    
-    broadcastSSEData({ 
-      complete: true,
-      finalCounts: { created: createdCount, deleted: deletedCount, failed: failedCount },
-      mode: 'reset',
-      duration
-    });
-    
-    return { complete: true };
-    
-  } catch (error) {
-    console.error(`❌ [${lockId}] RESET & FULL SYNC ERROR:`, error);
-    broadcastSSEData({
-      message: `Reset & Full Sync failed: ${error.message}`,
-      type: 'failed',
-      complete: true
-    });
-    throw error;
-  }
-}
+// ===== CORE SMART SYNC FUNCTION =====
+// One function to handle all sync scenarios
+async function performSmartSync(options = {}) {
+  const {
+    mode = 'smart',           // 'smart', 'reset', 'incremental'
+    daysBack = 30,           // for incremental mode
+    deleteOrphaned = false,   // whether to clean up deleted bookmarks
+    limit = 0                // for testing (0 = no limit)
+  } = options;
 
-// MODE 2: SMART INCREMENTAL SYNC (Temporal filtering)
-async function performSmartIncrementalSync(daysBack = 30) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
-  console.log(`🧠 Smart Incremental Sync starting - Lock ID: ${lockId}, checking last ${daysBack} days`);
+  console.log(`🧠 Starting Smart Sync (${mode} mode) - Lock ID: ${lockId}`);
   
   let addedCount = 0;
   let updatedCount = 0;
+  let deletedCount = 0;
   let skippedCount = 0;
   let failedCount = 0;
   
@@ -245,7 +75,7 @@ async function performSmartIncrementalSync(daysBack = 30) {
       const updateData = {
         message: `${message}`,
         type,
-        counts: { added: addedCount, updated: updatedCount, skipped: skippedCount, failed: failedCount },
+        counts: { added: addedCount, updated: updatedCount, deleted: deletedCount, skipped: skippedCount, failed: failedCount },
         lockInfo: {
           locked: GLOBAL_SYNC_LOCK,
           lockId: lockId,
@@ -260,190 +90,277 @@ async function performSmartIncrementalSync(daysBack = 30) {
       broadcastSSEData(updateData);
     };
     
-    sendUpdate(`🧠 Starting Smart Incremental Sync (last ${daysBack} days)`, 'info');
+    sendUpdate(`🧠 Starting Smart Sync (${mode} mode)`, 'info');
     
-    // === STEP 1: GET RECENT RAINDROPS (TEMPORAL FILTERING) ===
-    sendUpdate(`📡 Fetching recent Raindrop bookmarks (last ${daysBack} days)...`, 'fetching');
+    // ===== PHASE 1: LOAD DATA (Parallel for speed) =====
+    sendUpdate('📡 Loading data from both systems...', 'fetching');
     
-    let recentRaindrops = [];
-    try {
-      const hoursBack = daysBack * 24;
-      recentRaindrops = await getRecentRaindrops(hoursBack);
-    } catch (error) {
-      throw new Error(`Failed to fetch recent raindrops: ${error.message}`);
-    }
-    
-    sendUpdate(`✅ Found ${recentRaindrops.length} recent Raindrop bookmarks`, 'success');
-    
-    if (recentRaindrops.length === 0) {
-      sendUpdate('No recent raindrops found. Everything is up to date!', 'complete');
-      broadcastSSEData({ 
-        complete: true,
-        finalCounts: { added: 0, updated: 0, skipped: 0, failed: 0 },
-        mode: 'incremental'
-      });
-      return { complete: true };
-    }
-    
-    // === STEP 2: BUILD NOTION URL LOOKUP (EFFICIENT) ===
-    sendUpdate('📡 Building Notion URL lookup...', 'processing');
-    
+    let raindrops = [];
     let notionPages = [];
+    
     try {
-      notionPages = await getNotionPages();
-    } catch (error) {
-      throw new Error(`Failed to fetch Notion pages: ${error.message}`);
-    }
-    
-    // Create efficient lookup map
-    const notionUrlMap = new Map();
-    const notionTitleMap = new Map();
-    
-    for (const page of notionPages) {
-      const url = page.properties?.URL?.url;
-      const title = page.properties?.Name?.title?.[0]?.text?.content;
-      
-      if (url) {
-        notionUrlMap.set(normalizeUrl(url), page);
-      }
-      if (title) {
-        notionTitleMap.set(normalizeTitle(title), page);
-      }
-    }
-    
-    sendUpdate(`✅ Built lookup maps from ${notionPages.length} Notion pages`, 'success');
-    
-    // === STEP 3: SMART DIFF ON RECENT ITEMS ONLY ===
-    sendUpdate('🔍 Performing Smart Diff on recent items...', 'processing');
-    
-    const itemsToAdd = [];
-    const itemsToUpdate = [];
-    const itemsToSkip = [];
-    
-    for (const item of recentRaindrops) {
-      const normUrl = normalizeUrl(item.link);
-      const normTitle = normalizeTitle(item.title);
-      
-      const existingPage = notionUrlMap.get(normUrl) || notionTitleMap.get(normTitle);
-      
-      if (existingPage) {
-        // Check if update needed
-        const currentTitle = existingPage.properties?.Name?.title?.[0]?.text?.content || '';
-        const currentUrl = existingPage.properties?.URL?.url || '';
-        
-        const currentTags = new Set();
-        if (existingPage.properties?.Tags?.multi_select) {
-          existingPage.properties.Tags.multi_select.forEach(tag => {
-            currentTags.add(tag.name);
-          });
-        }
-        
-        const needsUpdate = 
-          (normalizeTitle(currentTitle) !== normalizeTitle(item.title)) ||
-          (normalizeUrl(currentUrl) !== normUrl) ||
-          !tagsMatch(currentTags, item.tags || []);
-        
-        if (needsUpdate) {
-          itemsToUpdate.push({ item, existingPage });
-        } else {
-          itemsToSkip.push(item);
-        }
+      if (mode === 'incremental') {
+        // Only get recent raindrops for incremental mode
+        const hoursBack = daysBack * 24;
+        [raindrops, notionPages] = await Promise.all([
+          getRecentRaindrops(hoursBack),
+          getNotionPages()
+        ]);
+        sendUpdate(`✅ Loaded ${raindrops.length} recent raindrops and ${notionPages.length} Notion pages`, 'success');
       } else {
-        itemsToAdd.push(item);
+        // Get all data for smart/reset modes
+        [raindrops, notionPages] = await Promise.all([
+          getAllRaindrops(limit),
+          getNotionPages()
+        ]);
+        sendUpdate(`✅ Loaded ${raindrops.length} raindrops and ${notionPages.length} Notion pages`, 'success');
       }
+    } catch (error) {
+      throw new Error(`Data loading failed: ${error.message}`);
     }
     
-    function tagsMatch(currentTags, newTags) {
-      if (currentTags.size !== newTags.length) return false;
-      for (const tag of newTags) {
-        if (!currentTags.has(tag)) return false;
-      }
-      return true;
-    }
-    
-    const totalOperations = itemsToAdd.length + itemsToUpdate.length;
-    skippedCount = itemsToSkip.length;
-    
-    sendUpdate(`🔍 Smart Diff complete: ${itemsToAdd.length} to add, ${itemsToUpdate.length} to update, ${itemsToSkip.length} already synced`, 'analysis');
-    
-    if (totalOperations === 0) {
-      sendUpdate('🎉 All recent items already synced! No changes needed.', 'complete');
-      broadcastSSEData({ 
-        complete: true, 
-        finalCounts: { added: 0, updated: 0, skipped: skippedCount, failed: 0 },
-        mode: 'incremental' 
-      });
-      return { complete: true };
-    }
-    
-    const efficiency = recentRaindrops.length > 0 ? 
-      Math.round(((recentRaindrops.length - totalOperations) / recentRaindrops.length) * 100) : 100;
-    sendUpdate(`🚀 Processing ${totalOperations} operations (${efficiency}% efficiency - only checking recent items!)`, 'info');
-    
-    // === STEP 4: PROCESS OPERATIONS ===
-    
-    // Process new items
-    if (itemsToAdd.length > 0) {
-      sendUpdate(`➕ Creating ${itemsToAdd.length} new pages...`, 'processing');
+    // ===== PHASE 2: SMART ANALYSIS =====
+    if (mode === 'reset') {
+      // Reset mode: Delete all, recreate all
+      sendUpdate('🔄 Reset mode: Will delete all and recreate', 'analysis');
       
-      for (const item of itemsToAdd) {
-        try {
-          const result = await createNotionPage(item);
-          if (result.success) {
-            sendUpdate(`✅ Created: "${item.title}"`, 'added');
-            addedCount++;
-          } else {
-            sendUpdate(`❌ Failed to create: "${item.title}"`, 'failed');
-            failedCount++;
+      // Delete all existing pages first
+      if (notionPages.length > 0) {
+        sendUpdate(`🗑️ Deleting ${notionPages.length} existing pages...`, 'processing');
+        
+        const deleteChunks = chunkArray(notionPages, 10);
+        for (let i = 0; i < deleteChunks.length; i++) {
+          const chunk = deleteChunks[i];
+          sendUpdate(`🗑️ Deleting batch ${i + 1}/${deleteChunks.length}`, 'processing');
+          
+          for (const page of chunk) {
+            try {
+              await deleteNotionPage(page.id);
+              deletedCount++;
+              await new Promise(resolve => setTimeout(resolve, 200));
+            } catch (error) {
+              sendUpdate(`❌ Delete failed: ${error.message}`, 'failed');
+              failedCount++;
+              await new Promise(resolve => setTimeout(resolve, 400));
+            }
           }
           
-          // PROVEN WORKING DELAY: 200ms between operations
-          await new Promise(resolve => setTimeout(resolve, 200));
+          if (i < deleteChunks.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
+      
+      // Create all raindrops
+      sendUpdate(`📝 Creating ${raindrops.length} new pages...`, 'processing');
+      
+      const createChunks = chunkArray(raindrops, 10);
+      for (let i = 0; i < createChunks.length; i++) {
+        const chunk = createChunks[i];
+        sendUpdate(`📝 Creating batch ${i + 1}/${createChunks.length}`, 'processing');
+        
+        for (const item of chunk) {
+          try {
+            const result = await createNotionPage(item);
+            if (result.success) {
+              addedCount++;
+              sendUpdate(`✅ Created: "${item.title}"`, 'added');
+            } else {
+              failedCount++;
+              sendUpdate(`❌ Create failed: "${item.title}"`, 'failed');
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch (error) {
+            failedCount++;
+            sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
+            await new Promise(resolve => setTimeout(resolve, 400));
+          }
+        }
+        
+        if (i < createChunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+      
+    } else {
+      // Smart/Incremental mode: Calculate differences
+      sendUpdate('🔍 Analyzing differences (Smart Diff)...', 'analysis');
+      
+      // Create lookup maps for fast comparison
+      const notionByUrl = new Map();
+      const notionByTitle = new Map();
+      
+      for (const page of notionPages) {
+        const url = page.properties?.URL?.url;
+        const title = page.properties?.Name?.title?.[0]?.text?.content;
+        
+        if (url) {
+          notionByUrl.set(normalizeUrl(url), page);
+        }
+        if (title) {
+          notionByTitle.set(normalizeTitle(title), page);
+        }
+      }
+      
+      const operations = {
+        create: [],
+        update: [],
+        skip: []
+      };
+      
+      // Analyze each raindrop
+      for (const item of raindrops) {
+        const normUrl = normalizeUrl(item.link);
+        const normTitle = normalizeTitle(item.title);
+        
+        // Smart matching: URL first, then title fallback
+        const existingPage = notionByUrl.get(normUrl) || notionByTitle.get(normTitle);
+        
+        if (existingPage) {
+          // Check if update needed
+          const currentTitle = existingPage.properties?.Name?.title?.[0]?.text?.content || '';
+          const currentUrl = existingPage.properties?.URL?.url || '';
           
-        } catch (error) {
-          sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
-          failedCount++;
-          // PROVEN WORKING DELAY: 200ms between operations (error case gets 400ms)
-          await new Promise(resolve => setTimeout(resolve, 400));
+          const currentTags = new Set();
+          if (existingPage.properties?.Tags?.multi_select) {
+            existingPage.properties.Tags.multi_select.forEach(tag => {
+              currentTags.add(tag.name);
+            });
+          }
+          
+          const needsUpdate = 
+            (normalizeTitle(currentTitle) !== normalizeTitle(item.title)) ||
+            (normalizeUrl(currentUrl) !== normUrl) ||
+            !tagsMatch(currentTags, item.tags || []);
+          
+          if (needsUpdate) {
+            operations.update.push({ item, existingPage });
+          } else {
+            operations.skip.push(item);
+          }
+        } else {
+          operations.create.push(item);
+        }
+      }
+      
+      function tagsMatch(currentTags, newTags) {
+        if (currentTags.size !== newTags.length) return false;
+        for (const tag of newTags) {
+          if (!currentTags.has(tag)) return false;
+        }
+        return true;
+      }
+      
+      // Handle orphaned pages (if deleteOrphaned is true)
+      if (deleteOrphaned && mode === 'smart') {
+        const raindropUrls = new Set(raindrops.map(r => normalizeUrl(r.link)));
+        for (const page of notionPages) {
+          const pageUrl = normalizeUrl(page.properties?.URL?.url);
+          if (pageUrl && !raindropUrls.has(pageUrl)) {
+            operations.delete = operations.delete || [];
+            operations.delete.push(page);
+          }
+        }
+      }
+      
+      skippedCount = operations.skip.length;
+      const totalOperations = operations.create.length + operations.update.length + (operations.delete?.length || 0);
+      
+      const efficiency = raindrops.length > 0 ? 
+        Math.round(((raindrops.length - totalOperations) / raindrops.length) * 100) : 100;
+      
+      sendUpdate(`🔍 Smart Diff complete: ${operations.create.length} to add, ${operations.update.length} to update, ${skippedCount} already synced`, 'analysis');
+      sendUpdate(`🚀 Processing ${totalOperations} operations (${efficiency}% efficiency!)`, 'info');
+      
+      if (totalOperations === 0) {
+        sendUpdate('🎉 Everything already synced! No changes needed.', 'complete');
+        broadcastSSEData({ 
+          complete: true, 
+          finalCounts: { added: 0, updated: 0, deleted: 0, skipped: skippedCount, failed: 0 },
+          mode,
+          efficiency: { percentage: 100 }
+        });
+        return { complete: true };
+      }
+      
+      // ===== PHASE 3: EXECUTE OPERATIONS =====
+      
+      // Delete orphaned pages first (if any)
+      if (operations.delete && operations.delete.length > 0) {
+        sendUpdate(`🗑️ Removing ${operations.delete.length} orphaned pages...`, 'processing');
+        for (const page of operations.delete) {
+          try {
+            await deleteNotionPage(page.id);
+            deletedCount++;
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch (error) {
+            failedCount++;
+            sendUpdate(`❌ Delete failed: ${error.message}`, 'failed');
+            await new Promise(resolve => setTimeout(resolve, 400));
+          }
+        }
+      }
+      
+      // Create new pages
+      if (operations.create.length > 0) {
+        sendUpdate(`➕ Creating ${operations.create.length} new pages...`, 'processing');
+        for (const item of operations.create) {
+          try {
+            const result = await createNotionPage(item);
+            if (result.success) {
+              addedCount++;
+              sendUpdate(`✅ Created: "${item.title}"`, 'added');
+            } else {
+              failedCount++;
+              sendUpdate(`❌ Create failed: "${item.title}"`, 'failed');
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch (error) {
+            failedCount++;
+            sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
+            await new Promise(resolve => setTimeout(resolve, 400));
+          }
+        }
+      }
+      
+      // Update existing pages
+      if (operations.update.length > 0) {
+        sendUpdate(`🔄 Updating ${operations.update.length} existing pages...`, 'processing');
+        for (const { item, existingPage } of operations.update) {
+          try {
+            const success = await updateNotionPage(existingPage.id, item);
+            if (success) {
+              updatedCount++;
+              sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
+            } else {
+              failedCount++;
+              sendUpdate(`❌ Update failed: "${item.title}"`, 'failed');
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch (error) {
+            failedCount++;
+            sendUpdate(`❌ Error updating "${item.title}": ${error.message}`, 'failed');
+            await new Promise(resolve => setTimeout(resolve, 400));
+          }
         }
       }
     }
     
-    // Process updates
-    if (itemsToUpdate.length > 0) {
-      sendUpdate(`🔄 Updating ${itemsToUpdate.length} existing pages...`, 'processing');
-      
-      for (const { item, existingPage } of itemsToUpdate) {
-        try {
-          const success = await updateNotionPage(existingPage.id, item);
-          if (success) {
-            sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
-            updatedCount++;
-          } else {
-            sendUpdate(`❌ Failed to update: "${item.title}"`, 'failed');
-            failedCount++;
-          }
-          
-          // PROVEN WORKING DELAY: 200ms between operations
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
-        } catch (error) {
-          sendUpdate(`❌ Error updating "${item.title}": ${error.message}`, 'failed');
-          failedCount++;
-          // PROVEN WORKING DELAY: 200ms between operations (error case gets 400ms)
-          await new Promise(resolve => setTimeout(resolve, 400));
-        }
-      }
-    }
-    
-    // === FINAL SUMMARY ===
+    // ===== FINAL SUMMARY =====
     const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
     
-    sendUpdate(`🎉 Smart Incremental Sync completed in ${duration}s!`, 'complete');
-    sendUpdate(`📊 Efficiency: Only checked ${recentRaindrops.length} recent items instead of all bookmarks`, 'info');
-    sendUpdate(`📈 Results: ${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped, ${failedCount} failed`, 'summary');
+    sendUpdate(`🎉 Smart Sync completed in ${duration}s!`, 'complete');
     
-    console.log(`✅ [${lockId}] SMART INCREMENTAL COMPLETE: ${duration}s, ${efficiency}% efficiency`);
+    if (mode === 'reset') {
+      sendUpdate(`📊 Results: ${addedCount} created, ${deletedCount} deleted, ${failedCount} failed`, 'summary');
+    } else {
+      const efficiency = raindrops.length > 0 ? 
+        Math.round(((raindrops.length - (addedCount + updatedCount)) / raindrops.length) * 100) : 100;
+      sendUpdate(`📊 Results: ${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped, ${failedCount} failed`, 'summary');
+      sendUpdate(`📈 Efficiency: ${efficiency}% (processed only necessary changes)`, 'info');
+    }
+    
+    console.log(`✅ [${lockId}] SMART SYNC COMPLETE: ${duration}s`);
     
     if (currentSync) {
       currentSync.completed = true;
@@ -452,17 +369,17 @@ async function performSmartIncrementalSync(daysBack = 30) {
     
     broadcastSSEData({ 
       complete: true,
-      finalCounts: { added: addedCount, updated: updatedCount, skipped: skippedCount, failed: failedCount },
-      efficiency: { itemsProcessed: totalOperations, totalItems: recentRaindrops.length, percentage: efficiency, duration },
-      mode: 'incremental'
+      finalCounts: { added: addedCount, updated: updatedCount, deleted: deletedCount, skipped: skippedCount, failed: failedCount },
+      mode,
+      duration
     });
     
     return { complete: true };
     
   } catch (error) {
-    console.error(`❌ [${lockId}] SMART INCREMENTAL ERROR:`, error);
+    console.error(`❌ [${lockId}] SMART SYNC ERROR:`, error);
     broadcastSSEData({
-      message: `Smart Incremental Sync failed: ${error.message}`,
+      message: `Smart Sync failed: ${error.message}`,
       type: 'failed',
       complete: true
     });
@@ -486,9 +403,10 @@ module.exports = async (req, res) => {
     
     const url = new URL(req.url, `http://${req.headers.host}`);
     const password = url.searchParams.get('password');
-    const mode = url.searchParams.get('mode') || 'incremental';
+    const mode = url.searchParams.get('mode') || 'smart';
     const limit = parseInt(url.searchParams.get('limit') || '0', 10);
     const daysBack = parseInt(url.searchParams.get('daysBack') || '30', 10);
+    const deleteOrphaned = url.searchParams.get('deleteOrphaned') === 'true';
     
     // Password check
     if (!password || password !== process.env.ADMIN_PASSWORD) {
@@ -498,11 +416,13 @@ module.exports = async (req, res) => {
     
     const pathname = url.pathname;
     
+    // Health check
     if (pathname === '/health') {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
       return;
     }
     
+    // API: Get counts
     if (pathname === '/api/counts') {
       try {
         const [raindropTotal, notionTotal] = await Promise.all([
@@ -513,7 +433,7 @@ module.exports = async (req, res) => {
         res.json({
           raindropTotal,
           notionTotal,
-          isSynced: raindropTotal === notionTotal,
+          isSynced: Math.abs(raindropTotal - notionTotal) <= 5,
           success: true
         });
       } catch (error) {
@@ -522,6 +442,7 @@ module.exports = async (req, res) => {
       return;
     }
     
+    // Sync stream - the heart of the system
     if (pathname === '/sync-stream') {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -555,24 +476,24 @@ module.exports = async (req, res) => {
       // Create new sync process
       currentSync = {
         mode,
-        limit,
-        daysBack,
         isRunning: true,
         lockId: SYNC_LOCK_ID,
         startTime: Date.now(),
-        counts: { added: 0, updated: 0, skipped: 0, deleted: 0, failed: 0 },
+        counts: { added: 0, updated: 0, deleted: 0, skipped: 0, failed: 0 },
         completed: false
       };
       
-      // Choose sync mode
-      let syncPromise;
-      if (mode === 'reset' || mode === 'full') {
-        syncPromise = performResetAndFullSync(limit);
-      } else {
-        syncPromise = performSmartIncrementalSync(daysBack);
-      }
+      // Start the smart sync with options
+      const syncOptions = {
+        mode,
+        limit,
+        daysBack,
+        deleteOrphaned
+      };
       
-      // Start sync process
+      const syncPromise = performSmartSync(syncOptions);
+      
+      // Handle sync completion
       syncPromise
         .then(() => {
           console.log(`✅ Sync completed successfully - Lock ID: ${SYNC_LOCK_ID}`);
@@ -608,23 +529,13 @@ module.exports = async (req, res) => {
       return;
     }
     
-    // Sync pages with mode selection
-    if (pathname === '/sync' || pathname === '/sync-all' || pathname === '/reset-sync') {
-      let syncMode, pageTitle, pageDescription;
-      
-      if (pathname === '/reset-sync') {
-        syncMode = 'reset';
-        pageTitle = 'Reset & Full Sync';
-        pageDescription = 'Delete all Notion pages and recreate from Raindrop';
-      } else if (pathname === '/sync-all') {
-        syncMode = 'reset';  // For now, full sync = reset sync
-        pageTitle = 'Reset & Full Sync';
-        pageDescription = 'Complete database reset and recreation';
-      } else {
-        syncMode = 'incremental';
-        pageTitle = 'Smart Incremental Sync';
-        pageDescription = 'Sync only recent bookmarks (last 30 days)';
-      }
+    // Pages
+    if (pathname === '/sync') {
+      const syncMode = mode || 'smart';
+      const pageTitle = syncMode === 'reset' ? 'Reset & Full Sync' : 
+                       syncMode === 'incremental' ? 'Incremental Sync' : 'Smart Sync';
+      const pageDescription = syncMode === 'reset' ? 'Delete all Notion pages and recreate from Raindrop' :
+                             syncMode === 'incremental' ? 'Sync only recent bookmarks' : 'Smart analysis - only sync what needs to change';
       
       res.setHeader('Content-Type', 'text/html');
       res.send(`
@@ -632,127 +543,111 @@ module.exports = async (req, res) => {
         <html>
         <head>
           <title>${pageTitle}</title>
-          <style>
-            body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-            h1 { font-size: 72px; font-weight: normal; margin-bottom: 40px; }
-            .subtitle { font-size: 24px; color: #666; margin-bottom: 40px; line-height: 1.4; }
-            button { font-size: 48px; background: none; border: none; cursor: pointer; margin: 20px 0; }
-            button:hover { opacity: 0.7; }
-            button:disabled { opacity: 0.3; cursor: not-allowed; }
-            .back { font-size: 24px; color: #666; text-decoration: none; }
-            .status { background: #f5f5f5; border-radius: 8px; padding: 20px; margin: 20px 0; max-height: 400px; overflow-y: auto; }
-            .message { padding: 8px; margin: 4px 0; border-left: 3px solid #ccc; font-family: monospace; font-size: 14px; }
-            .success { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
-            .error { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
-            .info { border-left-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
-            .added { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
-            .updated { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
-            .deleted { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
-            .failed { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.1); }
-            .complete { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.1); font-weight: bold; }
-            .processing { border-left-color: #8b5cf6; background: rgba(139, 92, 246, 0.1); }
-            .analysis { border-left-color: #6366f1; background: rgba(99, 102, 241, 0.1); }
-            .fetching { border-left-color: #06b6d4; background: rgba(6, 182, 212, 0.1); }
-            .summary { border-left-color: #10b981; background: rgba(16, 185, 129, 0.1); font-weight: bold; }
-          </style>
+          <link rel="stylesheet" href="/public/styles/design-system.css">
+          <link rel="stylesheet" href="/public/styles/dashboard.css">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
         </head>
         <body>
-          <a href="/?password=${password}" class="back">← Back to Dashboard</a>
-          <h1>${pageTitle}</h1>
-          <div class="subtitle">${pageDescription}</div>
-          
-          <button id="syncBtn" onclick="startSync()">
-            Start ${syncMode === 'reset' ? 'Reset & Full' : 'Incremental'} Sync
-          </button>
-          
-          <div id="status" class="status" style="display: none;"></div>
-          
-          <script>
-            let currentEventSource = null;
+          <div class="container">
+            <a href="/?password=${password}" class="back-button">← Back to Dashboard</a>
+            <h1 class="text-huge">${pageTitle}</h1>
+            <div class="text-medium" style="color: #666; margin-bottom: 40px;">${pageDescription}</div>
             
-            function startSync() {
-              const btn = document.getElementById('syncBtn');
-              const status = document.getElementById('status');
-              
-              btn.disabled = true;
-              btn.textContent = 'Sync Running...';
-              status.style.display = 'block';
-              status.innerHTML = '<div class="message info">🚀 Starting sync...</div>';
-              
-              connectToSync('/sync-stream?password=${password}&mode=${syncMode}&daysBack=30');
-            }
+            <button id="syncBtn" onclick="startSync()" class="text-huge" style="background: none; border: none; cursor: pointer; margin: 20px 0;">
+              Start ${pageTitle}
+            </button>
             
-            function addMessage(message, type = 'info') {
-              const status = document.getElementById('status');
-              const div = document.createElement('div');
-              div.className = 'message ' + type;
-              div.textContent = message;
-              status.appendChild(div);
-              status.scrollTop = status.scrollHeight;
-              
-              const timestamp = new Date().toLocaleTimeString();
-              console.log(\`[\${timestamp}] \${type.toUpperCase()}: \${message}\`);
-            }
+            <div id="status" style="background: #f5f5f5; border-radius: 8px; padding: 20px; margin: 20px 0; max-height: 400px; overflow-y: auto; display: none;"></div>
             
-            function connectToSync(url) {
-              if (currentEventSource) {
-                currentEventSource.close();
+            <script>
+              let currentEventSource = null;
+              
+              function startSync() {
+                const btn = document.getElementById('syncBtn');
+                const status = document.getElementById('status');
+                
+                btn.disabled = true;
+                btn.textContent = 'Sync Running...';
+                status.style.display = 'block';
+                status.innerHTML = '<div style="padding: 8px; margin: 4px 0; border-left: 3px solid #3b82f6; background: rgba(59, 130, 246, 0.1); font-family: monospace; font-size: 14px;">🚀 Starting sync...</div>';
+                
+                const syncUrl = '/sync-stream?password=${password}&mode=${syncMode}&daysBack=${daysBack}&deleteOrphaned=${deleteOrphaned}';
+                connectToSync(syncUrl);
               }
               
-              addMessage('🔗 Connecting to sync stream...', 'info');
-              currentEventSource = new EventSource(url);
+              function addMessage(message, type = 'info') {
+                const status = document.getElementById('status');
+                const div = document.createElement('div');
+                div.style.cssText = 'padding: 8px; margin: 4px 0; border-left: 3px solid #ccc; font-family: monospace; font-size: 14px;';
+                
+                if (type === 'success' || type === 'added') div.style.borderLeftColor = '#22c55e';
+                if (type === 'error' || type === 'failed') div.style.borderLeftColor = '#ef4444';
+                if (type === 'info') div.style.borderLeftColor = '#3b82f6';
+                if (type === 'updated') div.style.borderLeftColor = '#f59e0b';
+                if (type === 'complete') div.style.borderLeftColor = '#22c55e';
+                if (type === 'analysis') div.style.borderLeftColor = '#6366f1';
+                
+                div.textContent = message;
+                status.appendChild(div);
+                status.scrollTop = status.scrollHeight;
+              }
               
-              currentEventSource.onopen = function() {
-                addMessage('✅ Connected to sync stream', 'success');
-              };
-              
-              currentEventSource.onmessage = function(event) {
-                try {
-                  const data = JSON.parse(event.data);
-                  
-                  if (data.message) {
-                    addMessage(data.message, data.type || 'info');
-                  }
-                  
-                  if (data.complete) {
-                    currentEventSource.close();
-                    currentEventSource = null;
-                    document.getElementById('syncBtn').disabled = false;
-                    document.getElementById('syncBtn').textContent = 'Start ${syncMode === 'reset' ? 'Reset & Full' : 'Incremental'} Sync';
+              function connectToSync(url) {
+                if (currentEventSource) {
+                  currentEventSource.close();
+                }
+                
+                addMessage('🔗 Connecting to sync stream...', 'info');
+                currentEventSource = new EventSource(url);
+                
+                currentEventSource.onopen = function() {
+                  addMessage('✅ Connected to sync stream', 'success');
+                };
+                
+                currentEventSource.onmessage = function(event) {
+                  try {
+                    const data = JSON.parse(event.data);
                     
-                    if (data.finalCounts) {
-                      const counts = data.finalCounts;
-                      if (data.mode === 'reset') {
-                        addMessage(\`🎉 SYNC COMPLETE! Created: \${counts.created}, Deleted: \${counts.deleted}, Failed: \${counts.failed}\`, 'complete');
-                      } else {
-                        addMessage(\`🎉 SYNC COMPLETE! Added: \${counts.added}, Updated: \${counts.updated}, Skipped: \${counts.skipped}, Failed: \${counts.failed}\`, 'complete');
+                    if (data.message) {
+                      addMessage(data.message, data.type || 'info');
+                    }
+                    
+                    if (data.complete) {
+                      currentEventSource.close();
+                      currentEventSource = null;
+                      document.getElementById('syncBtn').disabled = false;
+                      document.getElementById('syncBtn').textContent = 'Start ${pageTitle}';
+                      
+                      if (data.finalCounts) {
+                        const counts = data.finalCounts;
+                        addMessage(\`🎉 SYNC COMPLETE! Added: \${counts.added}, Updated: \${counts.updated}, Deleted: \${counts.deleted}, Skipped: \${counts.skipped}, Failed: \${counts.failed}\`, 'complete');
                       }
                     }
+                    
+                  } catch (error) {
+                    console.error('Error parsing sync message:', error);
+                    addMessage('❌ Error parsing sync data', 'error');
                   }
-                  
-                } catch (error) {
-                  console.error('Error parsing sync message:', error);
-                  addMessage('❌ Error parsing sync data', 'error');
-                }
-              };
-              
-              currentEventSource.onerror = function(error) {
-                console.error('EventSource error:', error);
-                currentEventSource.close();
-                currentEventSource = null;
-                document.getElementById('syncBtn').disabled = false;
-                document.getElementById('syncBtn').textContent = 'Start ${syncMode === 'reset' ? 'Reset & Full' : 'Incremental'} Sync';
-                addMessage('❌ Connection error - sync interrupted', 'error');
-              };
-            }
-          </script>
+                };
+                
+                currentEventSource.onerror = function(error) {
+                  console.error('EventSource error:', error);
+                  currentEventSource.close();
+                  currentEventSource = null;
+                  document.getElementById('syncBtn').disabled = false;
+                  document.getElementById('syncBtn').textContent = 'Start ${pageTitle}';
+                  addMessage('❌ Connection error - sync interrupted', 'error');
+                };
+              }
+            </script>
+          </div>
         </body>
         </html>
       `);
       return;
     }
     
-    // Dashboard with new sync options
+    // Dashboard
     if (pathname === '/') {
       res.setHeader('Content-Type', 'text/html');
       res.send(`
@@ -760,37 +655,33 @@ module.exports = async (req, res) => {
         <html>
         <head>
           <title>Raindrop/Notion Sync</title>
-          <style>
-            body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-            h1 { font-size: 72px; font-weight: normal; letter-spacing: -0.05em; margin-bottom: 40px; }
-            .count { font-size: 72px; margin-bottom: 20px; }
-            .status { font-size: 72px; margin-bottom: 40px; color: #666; }
-            .actions a { font-size: 72px; display: block; margin: 20px 0; color: #000; text-decoration: none; }
-            .actions a:hover { opacity: 0.7; }
-            .actions a.secondary { color: #e1e1e1; }
-            .actions a.danger { color: #ff4444; }
-            .indicator { width: 100px; height: 20px; margin-bottom: 40px; background: #ff0000; }
-            .indicator.synced { background: #17d827; }
-            .mode-description { font-size: 24px; color: #999; margin-left: 20px; }
-          </style>
+          <link rel="stylesheet" href="/public/styles/design-system.css">
+          <link rel="stylesheet" href="/public/styles/dashboard.css">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
         </head>
         <body>
-          <div id="indicator" class="indicator"></div>
-          <h1>Raindrop/Notion Sync</h1>
-          <div class="count" id="raindrop">... Raindrop Bookmarks</div>
-          <div class="count" id="notion">... Notion Pages</div>
-          <div class="status" id="status">Loading...</div>
-          
-          <div class="actions">
-            <a href="/sync?password=${password}&mode=incremental">
-              Sync Recent ↻
-              <div class="mode-description">Smart incremental (last 30 days)</div>
-            </a>
-            
-            <a href="/reset-sync?password=${password}" class="danger">
-              Reset & Full Sync
-              <div class="mode-description">Delete all → recreate from Raindrop</div>
-            </a>
+          <div class="container">
+            <div class="dashboard">
+              <div class="status-indicator not-synced" id="indicator"></div>
+              <h1 class="text-huge">Raindrop/Notion Sync</h1>
+              <div class="text-huge" id="raindrop">... Raindrop Bookmarks</div>
+              <div class="text-huge" id="notion">... Notion Pages</div>
+              <div class="text-huge" id="status" style="color: #666; margin-bottom: 40px;">Loading...</div>
+              
+              <div class="dashboard-actions">
+                <a href="/sync?password=${password}&mode=smart" class="action-button primary">
+                  Smart Sync ↻
+                </a>
+                
+                <a href="/sync?password=${password}&mode=incremental" class="action-button secondary">
+                  Recent Only (${daysBack} days)
+                </a>
+                
+                <a href="/sync?password=${password}&mode=reset&deleteOrphaned=true" class="action-button secondary" style="color: #ff4444;">
+                  Reset & Full Sync
+                </a>
+              </div>
+            </div>
           </div>
           
           <script>
@@ -805,6 +696,7 @@ module.exports = async (req, res) => {
                 
                 if (synced) {
                   document.getElementById('indicator').classList.add('synced');
+                  document.getElementById('indicator').classList.remove('not-synced');
                   document.getElementById('status').textContent = 'All bookmarks are synchronized';
                   document.getElementById('status').style.color = '#17d827';
                 } else {
