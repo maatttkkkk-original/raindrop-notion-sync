@@ -4,6 +4,7 @@
 const { getAllRaindrops, getRaindropTotal, getRecentRaindrops } = require('../services/raindrop');
 const { getNotionPages, getTotalNotionPages, createNotionPage, updateNotionPage, deleteNotionPage } = require('../services/notion');
 
+
 // Helper functions
 function normalizeUrl(url) {
   try {
@@ -27,7 +28,61 @@ function chunkArray(arr, size) {
   }
   return result;
 }
+function chunkArray(arr, size) {
+  const result = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
 
+// ADD THIS ENTIRE SECTION:
+// === BASIC CACHE SYSTEM ===
+const CACHE_CONFIG = {
+  cacheDir: '/tmp/raindrop-cache',
+  raindropsFile: 'raindrops-data.json',
+  maxAge: 6 * 60 * 60 * 1000 // 6 hours
+};
+
+function ensureCacheDir() {
+  try {
+    if (!fs.existsSync(CACHE_CONFIG.cacheDir)) {
+      fs.mkdirSync(CACHE_CONFIG.cacheDir, { recursive: true });
+    }
+    return true;
+  } catch (error) {
+    console.error('Cache directory creation failed:', error.message);
+    return false;
+  }
+}
+
+function getCacheFilePath() {
+  return path.join(CACHE_CONFIG.cacheDir, CACHE_CONFIG.raindropsFile);
+}
+
+function getCacheStatus() {
+  try {
+    const cachePath = getCacheFilePath();
+    
+    if (!fs.existsSync(cachePath)) {
+      return { exists: false, valid: false, message: 'No cache found' };
+    }
+    
+    const stats = fs.statSync(cachePath);
+    const age = Date.now() - stats.mtime.getTime();
+    const ageMinutes = Math.round(age / (1000 * 60));
+    const isValid = age <= CACHE_CONFIG.maxAge;
+    
+    return {
+      exists: true,
+      valid: isValid,
+      ageMinutes,
+      message: isValid ? `Cache valid (${ageMinutes}m old)` : `Cache expired (${ageMinutes}m old)`
+    };
+  } catch (error) {
+    return { exists: false, valid: false, error: error.message };
+  }
+}
 // Global sync management
 let GLOBAL_SYNC_LOCK = false;
 let SYNC_START_TIME = null;
@@ -521,7 +576,31 @@ module.exports = async (req, res) => {
       }
       return;
     }
-    
+    if (pathname === '/api/counts') {
+  // ... existing counts code ...
+  return;
+}
+
+// ADD THIS SECTION:
+if (pathname === '/api/cache-test') {
+  try {
+    const status = getCacheStatus();
+    res.json({
+      success: true,
+      cache: status,
+      config: {
+        cacheDir: CACHE_CONFIG.cacheDir,
+        maxAge: CACHE_CONFIG.maxAge
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+  return;
+}
     if (pathname === '/sync-stream') {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
