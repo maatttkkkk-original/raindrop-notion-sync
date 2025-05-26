@@ -86,6 +86,37 @@ function getCacheStatus() {
   } catch (error) {
     return { exists: false, valid: false, error: error.message };
   }
+
+  function getCacheStatus() {
+  // ... existing code ...
+}
+
+// ADD THIS FUNCTION:
+async function writeCacheData(raindrops) {
+  try {
+    if (!ensureCacheDir()) {
+      throw new Error('Failed to create cache directory');
+    }
+    
+    const cachePath = getCacheFilePath();
+    const cacheData = {
+      raindrops,
+      timestamp: Date.now(),
+      count: raindrops.length,
+      cachedAt: new Date().toISOString()
+    };
+    
+    fs.writeFileSync(cachePath, JSON.stringify(cacheData), 'utf8');
+    
+    console.log(`✅ Cache written: ${raindrops.length} items`);
+    return { success: true, itemCount: raindrops.length };
+    
+  } catch (error) {
+    console.error('❌ Cache write failed:', error.message);
+    throw error;
+  }
+}
+
 }
 // Global sync management
 let GLOBAL_SYNC_LOCK = false;
@@ -585,7 +616,6 @@ module.exports = async (req, res) => {
   return;
 }
 
-// ADD THIS SECTION:
 if (pathname === '/api/cache-test') {
   try {
     const status = getCacheStatus();
@@ -603,8 +633,37 @@ if (pathname === '/api/cache-test') {
       error: error.message 
     });
   }
+
+  if (pathname === '/api/cache-test') {
+  // ... existing code ...
   return;
 }
+
+// ADD THIS ENDPOINT:
+if (pathname === '/api/cache-create') {
+  try {
+    console.log('🔄 Creating cache...');
+    
+    // Get recent raindrops for testing (limit to 10 for safety)
+    const raindrops = await getAllRaindrops(10);
+    
+    // Write to cache
+    const result = await writeCacheData(raindrops);
+    
+    res.json({
+      success: true,
+      message: `Cache created with ${result.itemCount} items`,
+      result
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+  return;
+}
+ 
     if (pathname === '/sync-stream') {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
