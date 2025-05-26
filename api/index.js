@@ -32,15 +32,7 @@ function chunkArray(arr, size) {
   }
   return result;
 }
-function chunkArray(arr, size) {
-  const result = [];
-  for (let i = 0; i < arr.length; i += size) {
-    result.push(arr.slice(i, i + size));
-  }
-  return result;
-}
 
-// ADD THIS ENTIRE SECTION:
 // === BASIC CACHE SYSTEM ===
 const CACHE_CONFIG = {
   cacheDir: '/tmp/raindrop-cache',
@@ -67,16 +59,13 @@ function getCacheFilePath() {
 function getCacheStatus() {
   try {
     const cachePath = getCacheFilePath();
-    
     if (!fs.existsSync(cachePath)) {
       return { exists: false, valid: false, message: 'No cache found' };
     }
-    
     const stats = fs.statSync(cachePath);
     const age = Date.now() - stats.mtime.getTime();
     const ageMinutes = Math.round(age / (1000 * 60));
     const isValid = age <= CACHE_CONFIG.maxAge;
-    
     return {
       exists: true,
       valid: isValid,
@@ -86,18 +75,13 @@ function getCacheStatus() {
   } catch (error) {
     return { exists: false, valid: false, error: error.message };
   }
-
-  function getCacheStatus() {
-  // ... existing code ...
 }
 
-// ADD THIS FUNCTION:
 async function writeCacheData(raindrops) {
   try {
     if (!ensureCacheDir()) {
       throw new Error('Failed to create cache directory');
     }
-    
     const cachePath = getCacheFilePath();
     const cacheData = {
       raindrops,
@@ -105,19 +89,15 @@ async function writeCacheData(raindrops) {
       count: raindrops.length,
       cachedAt: new Date().toISOString()
     };
-    
     fs.writeFileSync(cachePath, JSON.stringify(cacheData), 'utf8');
-    
     console.log(`✅ Cache written: ${raindrops.length} items`);
     return { success: true, itemCount: raindrops.length };
-    
   } catch (error) {
     console.error('❌ Cache write failed:', error.message);
     throw error;
   }
 }
 
-}
 // Global sync management
 let GLOBAL_SYNC_LOCK = false;
 let SYNC_START_TIME = null;
@@ -611,58 +591,49 @@ module.exports = async (req, res) => {
       }
       return;
     }
-    if (pathname === '/api/counts') {
-  // ... existing counts code ...
-  return;
-}
-
-if (pathname === '/api/cache-test') {
-  try {
-    const status = getCacheStatus();
-    res.json({
-      success: true,
-      cache: status,
-      config: {
-        cacheDir: CACHE_CONFIG.cacheDir,
-        maxAge: CACHE_CONFIG.maxAge
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-
   if (pathname === '/api/cache-test') {
-  // ... existing code ...
-  return;
-}
-
-// ADD THIS ENDPOINT:
-if (pathname === '/api/cache-create') {
-  try {
-    console.log('🔄 Creating cache...');
+      try {
+        const status = getCacheStatus();
+        res.json({
+          success: true,
+          cache: status,
+          config: {
+            cacheDir: CACHE_CONFIG.cacheDir,
+            maxAge: CACHE_CONFIG.maxAge
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ 
+          success: false, 
+          error: error.message 
+        });
+      }
+      return;
+    }
     
-    // Get recent raindrops for testing (limit to 10 for safety)
-    const raindrops = await getAllRaindrops(10);
-    
-    // Write to cache
-    const result = await writeCacheData(raindrops);
-    
-    res.json({
-      success: true,
-      message: `Cache created with ${result.itemCount} items`,
-      result
-    });
-  } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
-  }
-  return;
-}
+    if (pathname === '/api/cache-create') {
+      try {
+        console.log('🔄 Creating cache...');
+        
+        // Get recent raindrops for testing (limit to 10 for safety)
+        const raindrops = await getAllRaindrops(10);
+        
+        // Write to cache
+        const result = await writeCacheData(raindrops);
+        
+        res.json({
+          success: true,
+          message: `Cache created with ${result.itemCount} items`,
+          result
+        });
+      } catch (error) {
+        res.status(500).json({ 
+          success: false, 
+          error: error.message 
+        });
+      }
+      return;
+    }
  
     if (pathname === '/sync-stream') {
       res.setHeader('Content-Type', 'text/event-stream');
