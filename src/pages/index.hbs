@@ -10,7 +10,6 @@
 <link rel="stylesheet" href="/styles/dashboard.css?v=2024-12-17-001">
 </head>
 <body>
-<<<<<<< HEAD
   <main class="dashboard-8-section" id="main-content" role="main">
     <!-- Section 1: Title -->
     <div class="dashboard-section section-1 bg-white">
@@ -37,114 +36,70 @@
       <div class="section-content">
         <div class="count-display" id="notionCount">
           <span class="text-huge text-green" id="notion">{{notionCount}} Notion Pages</span>
-=======
-  <div class="container">
-    <main class="dashboard-8-section" id="main-content" role="main">
-      <!-- Section 1: Title -->
-      <div class="dashboard-section section-1 bg-white">
-        <div class="section-content">
-          <h1 class="text-huge">Raindrop/Notion Sync</h1>
         </div>
       </div>
-      
-      <div class="dashboard-divider"></div>
-      
-      <!-- Section 2: First Count -->
-      <div class="dashboard-section section-2 bg-white" id="raindrop-section">
-        <div class="section-content">
-          <div class="count-display" id="raindropCount">
-            <span class="text-huge" id="raindrop">... Raindrop Bookmarks</span>
-          </div>
->>>>>>> parent of 9920bb4 (Update index.hbs)
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 4: Status Message -->
+    <div class="dashboard-section section-4 bg-green" id="status-section">
+      <div class="section-content">
+        <div class="status-message" id="statusMessage">
+          <span class="text-huge text-white" id="status">Synced</span>
         </div>
       </div>
-      
-      <div class="dashboard-divider"></div>
-      
-      <!-- Section 3: Second Count -->
-      <div class="dashboard-section section-3 bg-white" id="notion-section">
-        <div class="section-content">
-          <div class="count-display" id="notionCount">
-            <span class="text-huge" id="notion">... Notion Pages</span>
-          </div>
-        </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 5: Primary Action -->
+    <div class="dashboard-section section-5 bg-white" id="primary-action-section">
+      <div class="section-content">
+        <form action="/sync" method="get" style="display:inline;">
+          <input type="hidden" name="password" value="{{password}}">
+          <input type="hidden" name="mode" value="smart">
+          <button type="submit" class="section-action-button text-huge text-black" id="primaryAction">
+            Sync New? ↻
+          </button>
+        </form>
       </div>
-      
-      <div class="dashboard-divider"></div>
-      
-      <!-- Section 4: Status Message -->
-      <div class="dashboard-section section-4 bg-white" id="status-section">
-        <div class="section-content">
-          <div class="status-message" id="statusMessage">
-            <span class="text-huge" id="status">Loading...</span>
-          </div>
-        </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 6: Secondary Action -->
+    <div class="dashboard-section section-6 bg-white" id="secondary-action-section">
+      <div class="section-content">
+        <form action="/sync" method="get" style="display:inline;">
+          <input type="hidden" name="password" value="{{password}}">
+          <input type="hidden" name="mode" value="reset">
+          <input type="hidden" name="deleteOrphaned" value="true">
+          <button type="submit" class="section-action-button text-huge text-black" id="secondaryAction">
+            Reset / FullSync
+          </button>
+        </form>
       </div>
-      
-      <div class="dashboard-divider"></div>
-      
-      <!-- Section 5: Primary Action -->
-      <div class="dashboard-section section-5 bg-white" id="primary-action-section">
-        <div class="section-content">
-          <a 
-            href="/sync?password={{password}}&mode=smart" 
-            class="action-button primary text-huge"
-            id="primaryAction"
-          >
-            Smart Sync ↻
-          </a>
-        </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 7: Additional Content/Log Area -->
+    <div class="dashboard-section section-7 bg-white log-section" id="log-section">
+      <div class="section-content">
+        <div id="status" class="status-display" role="log" aria-live="polite"></div>
       </div>
-      
-      <div class="dashboard-divider"></div>
-      
-      <!-- Section 6: Secondary Action -->
-      <div class="dashboard-section section-6 bg-white" id="secondary-action-section">
-        <div class="section-content">
-          <a 
-            href="/sync?password={{password}}&mode=incremental&daysBack=7" 
-            class="action-button secondary text-huge"
-            id="secondaryAction"
-          >
-            Recent Only (7 days)
-          </a>
-        </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 8: Back Button -->
+    <div class="dashboard-section section-8 bg-light-gray back-section">
+      <div class="section-content">
+        <a href="/" class="back-button text-large">Back ↺</a>
       </div>
-      
-      <div class="dashboard-divider"></div>
-      
-      <!-- Section 7: Additional Content/Log Area -->
-      <div class="dashboard-section section-7 bg-white log-section" id="log-section">
-        <div class="section-content">
-          <a 
-            href="/sync?password={{password}}&mode=reset&deleteOrphaned=true" 
-            class="action-button danger text-huge"
-            id="reset-sync-button"
-          >
-            Reset & Full Sync
-          </a>
-        </div>
-      </div>
-      
-      <div class="dashboard-divider"></div>
-      
-      <!-- Section 8: Back Button -->
-      <div class="dashboard-section section-8 bg-light-gray back-section">
-        <div class="section-content">
-          <span class="text-large" style="color: #999;">Dashboard</span>
-        </div>
-      </div>
-      
-      <!-- Status Indicator (Hidden - for JS compatibility) -->
-      <div id="indicator" class="status-indicator not-synced" style="display: none;"></div>
-      
-      <!-- Error Message (Hidden by default) -->
-      <div id="error-message" class="error-message d-none" role="alert">
-        <p>Failed to load sync status.</p>
-        <button id="retry-button" class="retry-button" type="button">Retry</button>
-      </div>
-    </main>
-  </div>
+    </div>
+  </main>
 
   <script src="/public/scripts/utils.js"></script>
   <script src="/public/scripts/sync.js"></script>
