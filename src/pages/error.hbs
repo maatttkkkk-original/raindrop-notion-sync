@@ -3,13 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Error - Raindrop/Notion Sync</title>
+  <title>Error Testing - Design Iteration</title>
   
-  <link rel="stylesheet" href="/public/styles/design-system.css">
-  <link rel="stylesheet" href="/public/styles/components.css">
-  <link rel="stylesheet" href="/public/styles/dashboard.css">
+<link rel="stylesheet" href="/styles/design-system.css?v=2024-12-17-001">
+<link rel="stylesheet" href="/styles/components.css?v=2024-12-17-001">
+<link rel="stylesheet" href="/styles/dashboard.css?v=2024-12-17-001">
 </head>
 <body>
+  <div class="state-switcher">
+    <h3>Error States:</h3>
+    <button onclick="setErrorState('network')" class="active">Network Error</button>
+    <button onclick="setErrorState('auth')">Auth Error</button>
+    <button onclick="setErrorState('timeout')">Timeout Error</button>
+    <button onclick="setErrorState('server')">Server Error</button>
+    <hr>
+    <h4>Test Actions:</h4>
+    <button onclick="resetError()">Reset Error</button>
+  </div>
+
   <div class="container">
     <main class="dashboard-8-section" id="main-content" role="main">
       <!-- Section 1: Title -->
@@ -36,7 +47,7 @@
       <div class="dashboard-section section-3 bg-yellow">
         <div class="section-content">
           <a 
-            href="/?password={{password}}" 
+            href="#" 
             class="action-button primary text-huge"
             id="back-button"
           >
@@ -52,11 +63,7 @@
         <div class="section-content">
           <div class="status-message" id="statusMessage">
             <span class="text-large error-message" id="error-message">
-              {{#if error}}
-                {{error}}
-              {{else}}
-                An unexpected error occurred
-              {{/if}}
+              Network connection failed
             </span>
           </div>
         </div>
@@ -67,12 +74,10 @@
       <!-- Section 5: Error Code -->
       <div class="dashboard-section section-5 bg-white">
         <div class="section-content">
-          {{#if code}}
-          <div class="error-code">
+          <div class="error-code" id="error-code-section">
             <div class="text-small error-code-label">Error Code</div>
-            <div class="text-medium error-code-value">{{code}}</div>
+            <div class="text-medium error-code-value" id="error-code-value">ERR_NETWORK_001</div>
           </div>
-          {{/if}}
         </div>
       </div>
       
@@ -81,12 +86,12 @@
       <!-- Section 6: Error Details -->
       <div class="dashboard-section section-6 bg-white">
         <div class="section-content">
-          {{#if details}}
-          <div class="error-details-extended">
+          <div class="error-details-extended" id="error-details-section">
             <div class="text-small error-details-label">Details</div>
-            <div class="text-small error-details-text">{{details}}</div>
+            <div class="text-small error-details-text" id="error-details-text">
+              Unable to connect to Raindrop API. Please check your internet connection.
+            </div>
           </div>
-          {{/if}}
         </div>
       </div>
       
@@ -100,20 +105,19 @@
               type="button"
               class="action-button secondary text-medium"
               id="retry-button"
+              onclick="retryAction()"
             >
               Try Again ↻
             </button>
             
-            {{#if supportUrl}}
             <a 
-              href="{{supportUrl}}" 
+              href="#" 
               class="action-button secondary text-medium"
               target="_blank"
               rel="noopener noreferrer"
             >
               Get Help →
             </a>
-            {{/if}}
           </div>
         </div>
       </div>
@@ -130,10 +134,13 @@
                 <strong>Timestamp:</strong> <span id="error-timestamp"></span><br>
                 <strong>User Agent:</strong> <span id="user-agent"></span><br>
                 <strong>URL:</strong> <span id="current-url"></span><br>
-                {{#if stack}}
                 <strong>Stack Trace:</strong>
-                <pre class="stack-trace">{{stack}}</pre>
-                {{/if}}
+                <pre class="stack-trace" id="stack-trace">
+Error: Network request failed
+    at fetch (/api/sync:42)
+    at syncManager.start (/sync.js:156)
+    at button.click (/dashboard:23)
+                </pre>
               </div>
             </div>
           </details>
@@ -150,10 +157,64 @@
       ></div>
     </main>
   </div>
+
+  <script src="../scripts/utils.js"></script>
+  <script src="../scripts/sync.js"></script>
+  <script src="../scripts/enhancements.js"></script>
   
-  <script src="/public/scripts/utils.js"></script>
-  <script src="/public/scripts/enhancements.js"></script>
   <script>
+    // Error test states
+    const errorStates = {
+      network: {
+        message: 'Network connection failed',
+        code: 'ERR_NETWORK_001',
+        details: 'Unable to connect to Raindrop API. Please check your internet connection.'
+      },
+      auth: {
+        message: 'Authentication failed',
+        code: 'ERR_AUTH_403',
+        details: 'Invalid API token or insufficient permissions.'
+      },
+      timeout: {
+        message: 'Request timed out',
+        code: 'ERR_TIMEOUT_408',
+        details: 'The sync operation took too long to complete.'
+      },
+      server: {
+        message: 'Server error occurred',
+        code: 'ERR_SERVER_500',
+        details: 'Internal server error. Please try again later.'
+      }
+    };
+
+    function setErrorState(stateName) {
+      const state = errorStates[stateName];
+      if (!state) return;
+
+      // Update active button
+      document.querySelectorAll('.state-switcher button').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.toLowerCase().includes(stateName)) {
+          btn.classList.add('active');
+        }
+      });
+
+      // Update error content
+      document.getElementById('error-message').textContent = state.message;
+      document.getElementById('error-code-value').textContent = state.code;
+      document.getElementById('error-details-text').textContent = state.details;
+
+      console.log(`Error state changed to: ${stateName}`);
+    }
+
+    function retryAction() {
+      alert('Retry action triggered!');
+    }
+
+    function resetError() {
+      location.reload();
+    }
+    
     // Populate technical details
     Utils.ready(() => {
       const timestampEl = document.getElementById('error-timestamp');

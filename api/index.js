@@ -1,725 +1,944 @@
-// Progressive Enhancement Sync System - Base Layer
-// Single smart function handles all sync scenarios
+/* Enhanced Dashboard & Sync Styles */
+/* File: public/styles/dashboard.css */
 
-// Import your excellent service files
-const { getAllRaindrops, getRaindropTotal, getRecentRaindrops } = require('../services/raindrop');
-const { getNotionPages, getTotalNotionPages, createNotionPage, updateNotionPage, deleteNotionPage } = require('../services/notion');
+/* 8-Section Dashboard Layout */
+.dashboard-8-section {
+  display: grid;
+  grid-template-rows: 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr;
+  height: 100vh;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
 
-// Helper functions (kept from your original)
-function normalizeUrl(url) {
-  try {
-    const u = new URL(url);
-    u.hash = '';
-    u.search = '';
-    return u.href.replace(/\/$/, '').toLowerCase();
-  } catch {
-    return url;
+.dashboard-section {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 var(--container-padding);
+  width: 100%;
+  position: relative;
+}
+
+.dashboard-section.section-1 {
+  background: white;
+}
+
+.dashboard-section.section-2 {
+  background: white;
+}
+
+.dashboard-section.section-3 {
+  background: white;
+}
+
+.dashboard-section.section-4 {
+  background: white;
+}
+
+.dashboard-section.section-5 {
+  background: white;
+}
+
+.dashboard-section.section-6 {
+  background: white;
+}
+
+.dashboard-section.section-7 {
+  background: white;
+}
+
+.dashboard-section.section-8 {
+  background: #f5f5f5;
+}
+
+/* Dividing Lines */
+.dashboard-divider {
+  width: 100%;
+  height: 2px;
+  background: black;
+  margin: 0;
+  padding: 0;
+}
+
+/* State-Based Section Backgrounds */
+.dashboard-section.bg-yellow {
+  background: #ffff00;
+}
+
+.dashboard-section.bg-green {
+  background: #00ff00;
+}
+
+.dashboard-section.bg-red {
+  background: #ff0000;
+}
+
+.dashboard-section.bg-white {
+  background: white;
+}
+
+.dashboard-section.bg-light-gray {
+  background: #f5f5f5;
+}
+
+/* Content Styling */
+.section-content {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.section-content.center {
+  justify-content: center;
+}
+
+.section-content.right {
+  justify-content: flex-end;
+}
+
+/* Text Colors for Different Backgrounds */
+.dashboard-section.bg-yellow .section-content,
+.dashboard-section.bg-green .section-content,
+.dashboard-section.bg-red .section-content {
+  color: black;
+}
+
+.dashboard-section.bg-green .section-content {
+  color: white;
+}
+
+.dashboard-section.bg-red .section-content {
+  color: white;
+}
+
+/* Scrollable Log Area */
+.log-section {
+  overflow-y: auto;
+  max-height: 100%;
+  padding: var(--spacing-sm) var(--container-padding);
+}
+
+.log-section .status-display {
+  background: transparent;
+  border: none;
+  padding: 0;
+  max-height: none;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* Action Buttons in Sections */
+.section-action-button {
+  font-size: var(--font-size-huge);
+  font-family: var(--font-primary);
+  letter-spacing: var(--letter-spacing-tight);
+  line-height: var(--line-height-tight);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  transition: opacity var(--transition-fast);
+}
+
+.section-action-button:hover {
+  opacity: 0.8;
+}
+
+.section-action-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Back Button Styling */
+.back-section {
+  padding-left: var(--container-padding);
+}
+
+.back-button {
+  font-size: var(--font-size-large);
+  color: #999;
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.back-button:hover {
+  color: #666;
+}
+
+/* ORIGINAL DASHBOARD STYLES (Preserved for compatibility) */
+
+/* Dashboard Container */
+.dashboard {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: var(--spacing-xl) 0;
+  position: relative;
+}
+
+/* Status Indicator - Responsive */
+.status-indicator {
+  width: clamp(80px, 20vw, 120px);
+  height: clamp(16px, 4vw, 24px);
+  margin-bottom: var(--spacing-lg);
+  border-radius: 2px;
+  transition: all var(--transition-normal);
+}
+
+.status-indicator.synced {
+  background-color: var(--color-synced-bg);
+}
+
+.status-indicator.not-synced {
+  background-color: var(--color-not-synced-bg);
+}
+
+.status-indicator.processing {
+  background: linear-gradient(45deg, #667eea, #764ba2);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Count Display */
+.count-display {
+  margin-bottom: var(--spacing-sm);
+  position: relative;
+  transition: all var(--transition-normal);
+}
+
+.count-display:hover {
+  transform: translateX(4px);
+}
+
+.count-display.loading {
+  opacity: 0.6;
+}
+
+.count-display.loading::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+.count-display.error {
+  color: var(--color-not-synced-text);
+}
+
+/* Status Text & Messages */
+.status-text {
+  color: #666;
+  margin-bottom: var(--spacing-lg);
+}
+
+.status-message {
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: 8px;
+  font-weight: 500;
+  line-height: 0.9;
+  transition: all var(--transition-normal);
+}
+
+.status-message.synced {
+  background-color: var(--color-synced-bg);
+  color: var(--color-text-on-color);
+}
+
+.status-message.not-synced {
+  background-color: var(--color-not-synced-bg);
+  color: var(--color-text-on-color);
+}
+
+.status-message.processing {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: var(--color-text-on-color);
+}
+
+.status-message.calculating {
+  background-color: var(--color-text-secondary);
+  color: var(--color-text-primary);
+}
+
+/* Action Buttons */
+.dashboard-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-lg);
+}
+
+.action-button {
+  font-size: var(--font-size-huge);
+  font-family: var(--font-primary);
+  letter-spacing: var(--letter-spacing-tight);
+  line-height: var(--line-height-tight);
+  padding: var(--spacing-sm) 0;
+  transition: all var(--transition-normal);
+  cursor: pointer;
+  border: none;
+  background: none;
+  text-align: left;
+  text-decoration: none;
+  display: block;
+}
+
+.action-button:hover {
+  opacity: 0.7;
+  transform: translateX(4px);
+}
+
+.action-button:active {
+  transform: translateX(2px);
+}
+
+.action-button.primary {
+  color: var(--color-text-primary);
+  font-weight: normal;
+}
+
+.action-button.secondary {
+  color: var(--color-text-secondary);
+  font-weight: normal;
+}
+
+.action-button.danger {
+  color: var(--color-not-synced-text);
+  font-weight: normal;
+}
+
+.action-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.action-button.running {
+  animation: pulse 2s infinite;
+}
+
+/* Sync Page Specific Styles */
+.sync-page {
+  min-height: 100vh;
+  padding: var(--spacing-lg) 0;
+}
+
+.sync-header {
+  margin-bottom: var(--spacing-xl);
+}
+
+.sync-title {
+  margin-bottom: var(--spacing-sm);
+}
+
+.sync-description {
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+}
+
+.sync-interface {
+  margin-bottom: var(--spacing-xl);
+}
+
+.sync-controls {
+  margin-bottom: var(--spacing-lg);
+}
+
+.sync-button {
+  min-width: 300px;
+  padding: var(--spacing-md) var(--spacing-lg);
+  font-size: var(--font-size-large);
+  border-radius: 8px;
+  transition: all var(--transition-normal);
+}
+
+.sync-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.sync-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Progress Components */
+.sync-progress {
+  margin-bottom: var(--spacing-lg);
+  display: none;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: var(--spacing-sm);
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #17d827, #22c55e);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.progress-text {
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+/* Status Display */
+.status-display {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: var(--spacing-md);
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 14px;
+  line-height: 1.4;
+  display: none;
+}
+
+.sync-update {
+  padding: 12px 16px;
+  margin: 4px 0;
+  border-radius: 6px;
+  border-left: 4px solid #ccc;
+  font-family: monospace;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.sync-update.info { 
+  border-left-color: #3b82f6; 
+  background: #eff6ff; 
+  color: #1e40af; 
+}
+
+.sync-update.success,
+.sync-update.added { 
+  border-left-color: #10b981; 
+  background: #ecfdf5; 
+  color: #047857; 
+}
+
+.sync-update.updated { 
+  border-left-color: #f59e0b; 
+  background: #fffbeb; 
+  color: #92400e; 
+}
+
+.sync-update.deleted { 
+  border-left-color: #ef4444; 
+  background: #fef2f2; 
+  color: #dc2626; 
+}
+
+.sync-update.failed,
+.sync-update.error { 
+  border-left-color: #ef4444; 
+  background: #fef2f2; 
+  color: #dc2626; 
+}
+
+.sync-update.complete { 
+  border-left-color: #10b981; 
+  background: #ecfdf5; 
+  color: #047857; 
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2);
+}
+
+.sync-update.analysis { 
+  border-left-color: #8b5cf6; 
+  background: #f3e8ff; 
+  color: #7c3aed; 
+  font-weight: 500; 
+}
+
+.sync-update.warning {
+  border-left-color: #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+/* Sync Statistics */
+.sync-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  display: none;
+}
+
+.stat-group {
+  display: flex;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  flex: 1;
+  min-width: 80px;
+  text-align: center;
+  padding: var(--spacing-sm);
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 6px;
+  transition: all var(--transition-normal);
+}
+
+.stat-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.stat-number {
+  display: block;
+  font-size: var(--font-size-large);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  transition: all var(--transition-normal);
+}
+
+.stat-label {
+  display: block;
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+}
+
+/* Efficiency Display */
+.efficiency-display {
+  padding: var(--spacing-md);
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border-radius: 8px;
+  text-align: center;
+  margin-top: var(--spacing-md);
+}
+
+.efficiency-number {
+  display: block;
+  font-size: var(--font-size-huge);
+  font-weight: 600;
+  margin-bottom: var(--spacing-xs);
+}
+
+.efficiency-label {
+  display: block;
+  font-size: var(--font-size-small);
+  opacity: 0.9;
+  margin-bottom: var(--spacing-sm);
+}
+
+.efficiency-status {
+  font-size: var(--font-size-small);
+  opacity: 0.9;
+}
+
+/* Info Cards */
+.sync-info {
+  margin-top: var(--spacing-xl);
+}
+
+.info-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.info-card.warning {
+  border-left: 4px solid #f59e0b;
+  background: #fffbeb;
+}
+
+.info-card h3 {
+  margin-bottom: var(--spacing-sm);
+  font-size: var(--font-size-medium);
+  color: var(--color-text-primary);
+}
+
+.info-card p {
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.info-card ul {
+  margin: 0;
+  padding-left: var(--spacing-md);
+  color: var(--color-text-secondary);
+}
+
+.info-card li {
+  margin-bottom: 4px;
+}
+
+/* Decorative Lines */
+.decorative-lines {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.1;
+}
+
+.decorative-line {
+  position: absolute;
+  background-color: var(--color-line);
+  transform-origin: center;
+}
+
+/* Generate decorative line positions */
+.decorative-line:nth-child(1),
+.line-1 {
+  width: 2px;
+  height: 40%;
+  top: 10%;
+  left: 15%;
+  transform: rotate(15deg);
+}
+
+.decorative-line:nth-child(2),
+.line-2 {
+  width: 1px;
+  height: 60%;
+  top: 20%;
+  right: 20%;
+  transform: rotate(-25deg);
+}
+
+.decorative-line:nth-child(3),
+.line-3 {
+  width: 1px;
+  height: 30%;
+  top: 60%;
+  left: 25%;
+  transform: rotate(45deg);
+}
+
+.decorative-line:nth-child(4),
+.line-4 {
+  width: 2px;
+  height: 50%;
+  top: 15%;
+  left: 60%;
+  transform: rotate(-15deg);
+}
+
+.decorative-line:nth-child(5),
+.line-5 {
+  width: 1px;
+  height: 35%;
+  bottom: 20%;
+  right: 30%;
+  transform: rotate(30deg);
+}
+
+.decorative-line:nth-child(6),
+.line-6 {
+  width: 1px;
+  height: 45%;
+  bottom: 10%;
+  left: 40%;
+  transform: rotate(-40deg);
+}
+
+.decorative-line:nth-child(7),
+.line-7 {
+  width: 2px;
+  height: 25%;
+  top: 40%;
+  right: 15%;
+  transform: rotate(60deg);
+}
+
+.decorative-line:nth-child(8),
+.line-8 {
+  width: 1px;
+  height: 55%;
+  bottom: 25%;
+  left: 10%;
+  transform: rotate(-10deg);
+}
+
+/* Error States */
+.error-page {
+  text-align: left;
+}
+
+.error-message {
+  background-color: rgba(255, 0, 0, 0.1);
+  border: 1px solid var(--color-not-synced-primary);
+  color: var(--color-not-synced-text);
+  padding: var(--spacing-md);
+  border-radius: 4px;
+  margin: var(--spacing-md) 0;
+  font-size: var(--font-size-small);
+}
+
+.error-details {
+  margin: var(--spacing-lg) 0;
+}
+
+.error-label {
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.error-code {
+  margin: var(--spacing-md) 0;
+  padding: var(--spacing-sm);
+  background: rgba(255, 0, 0, 0.1);
+  border-radius: 4px;
+  border-left: 4px solid var(--color-not-synced-primary);
+}
+
+.error-code-label {
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.error-code-value {
+  font-family: monospace;
+  color: var(--color-not-synced-text);
+}
+
+.error-details-extended {
+  margin: var(--spacing-md) 0;
+  padding: var(--spacing-sm);
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+.error-details-label {
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.error-details-text {
+  color: var(--color-text-primary);
+  line-height: 1.4;
+}
+
+.error-actions {
+  margin-top: var(--spacing-lg);
+}
+
+.technical-details {
+  margin-top: var(--spacing-xl);
+  padding: var(--spacing-sm);
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.technical-summary {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.technical-summary:hover {
+  color: var(--color-text-primary);
+}
+
+.technical-content {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.stack-trace {
+  background: rgba(0, 0, 0, 0.05);
+  padding: var(--spacing-sm);
+  border-radius: 4px;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  margin-top: var(--spacing-xs);
+}
+
+.retry-button {
+  background: none;
+  border: none;
+  color: var(--color-text-primary);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+  margin-left: var(--spacing-xs);
+}
+
+.retry-button:hover {
+  opacity: 0.7;
+}
+
+/* Hide decorative lines in 8-section layout */
+.dashboard-8-section .decorative-lines {
+  display: none;
+}
+
+/* Ensure old styles don't interfere in 8-section layout */
+.dashboard-8-section .count-display,
+.dashboard-8-section .status-message,
+.dashboard-8-section .dashboard-actions {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border-radius: 0;
+}
+
+.dashboard-8-section .count-display:hover {
+  transform: none;
+}
+
+.dashboard-8-section .action-button {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.dashboard-8-section .action-button:hover {
+  opacity: 0.8;
+  transform: none;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .dashboard-section {
+    padding: 0 var(--container-padding-mobile);
   }
-}
-
-function normalizeTitle(title) {
-  return (title || '').trim().toLowerCase();
-}
-
-function chunkArray(arr, size) {
-  const result = [];
-  for (let i = 0; i < arr.length; i += size) {
-    result.push(arr.slice(i, i + size));
-  }
-  return result;
-}
-
-// Global sync management (simplified)
-let GLOBAL_SYNC_LOCK = false;
-let SYNC_START_TIME = null;
-let SYNC_LOCK_ID = null;
-let currentSync = null;
-const activeStreams = new Map();
-
-// Helper to broadcast to all streams
-function broadcastSSEData(data) {
-  for (const [streamId, reply] of activeStreams.entries()) {
-    try {
-      reply.write(`data: ${JSON.stringify(data)}\n\n`);
-    } catch (error) {
-      console.error(`Error sending to stream ${streamId}:`, error.message);
-      activeStreams.delete(streamId);
-    }
-  }
-}
-
-// ===== CORE SMART SYNC FUNCTION =====
-// One function to handle all sync scenarios
-async function performSmartSync(options = {}) {
-  const {
-    mode = 'smart',           // 'smart', 'reset', 'incremental'
-    daysBack = 30,           // for incremental mode
-    deleteOrphaned = false,   // whether to clean up deleted bookmarks
-    limit = 0                // for testing (0 = no limit)
-  } = options;
-
-  const lockId = currentSync ? currentSync.lockId : 'unknown';
-  console.log(`🧠 Starting Smart Sync (${mode} mode) - Lock ID: ${lockId}`);
   
-  let addedCount = 0;
-  let updatedCount = 0;
-  let deletedCount = 0;
-  let skippedCount = 0;
-  let failedCount = 0;
+  .section-content {
+    font-size: calc(var(--font-size-huge) * 0.7);
+  }
   
-  try {
-    // Helper to send progress updates
-    const sendUpdate = (message, type = '') => {
-      console.log(`🧠 [${lockId}] ${message}`);
-      
-      const updateData = {
-        message: `${message}`,
-        type,
-        counts: { added: addedCount, updated: updatedCount, deleted: deletedCount, skipped: skippedCount, failed: failedCount },
-        lockInfo: {
-          locked: GLOBAL_SYNC_LOCK,
-          lockId: lockId,
-          duration: SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0
-        }
-      };
-      
-      if (currentSync) {
-        currentSync.counts = updateData.counts;
-      }
-      
-      broadcastSSEData(updateData);
-    };
-    
-    sendUpdate(`🧠 Starting Smart Sync (${mode} mode)`, 'info');
-    
-    // ===== PHASE 1: LOAD DATA (Parallel for speed) =====
-    sendUpdate('📡 Loading data from both systems...', 'fetching');
-    
-    let raindrops = [];
-    let notionPages = [];
-    
-    try {
-      if (mode === 'incremental') {
-        // Only get recent raindrops for incremental mode
-        const hoursBack = daysBack * 24;
-        [raindrops, notionPages] = await Promise.all([
-          getRecentRaindrops(hoursBack),
-          getNotionPages()
-        ]);
-        sendUpdate(`✅ Loaded ${raindrops.length} recent raindrops and ${notionPages.length} Notion pages`, 'success');
-      } else {
-        // Get all data for smart/reset modes
-        [raindrops, notionPages] = await Promise.all([
-          getAllRaindrops(limit),
-          getNotionPages()
-        ]);
-        sendUpdate(`✅ Loaded ${raindrops.length} raindrops and ${notionPages.length} Notion pages`, 'success');
-      }
-    } catch (error) {
-      throw new Error(`Data loading failed: ${error.message}`);
-    }
-    
-    // ===== PHASE 2: SMART ANALYSIS =====
-    if (mode === 'reset') {
-      // Reset mode: Delete all, recreate all
-      sendUpdate('🔄 Reset mode: Will delete all and recreate', 'analysis');
-      
-      // Delete all existing pages first
-      if (notionPages.length > 0) {
-        sendUpdate(`🗑️ Deleting ${notionPages.length} existing pages...`, 'processing');
-        
-        const deleteChunks = chunkArray(notionPages, 10);
-        for (let i = 0; i < deleteChunks.length; i++) {
-          const chunk = deleteChunks[i];
-          sendUpdate(`🗑️ Deleting batch ${i + 1}/${deleteChunks.length}`, 'processing');
-          
-          for (const page of chunk) {
-            try {
-              await deleteNotionPage(page.id);
-              deletedCount++;
-              await new Promise(resolve => setTimeout(resolve, 200));
-            } catch (error) {
-              sendUpdate(`❌ Delete failed: ${error.message}`, 'failed');
-              failedCount++;
-              await new Promise(resolve => setTimeout(resolve, 400));
-            }
-          }
-          
-          if (i < deleteChunks.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-          }
-        }
-      }
-      
-      // Create all raindrops
-      sendUpdate(`📝 Creating ${raindrops.length} new pages...`, 'processing');
-      
-      const createChunks = chunkArray(raindrops, 10);
-      for (let i = 0; i < createChunks.length; i++) {
-        const chunk = createChunks[i];
-        sendUpdate(`📝 Creating batch ${i + 1}/${createChunks.length}`, 'processing');
-        
-        for (const item of chunk) {
-          try {
-            const result = await createNotionPage(item);
-            if (result.success) {
-              addedCount++;
-              sendUpdate(`✅ Created: "${item.title}"`, 'added');
-            } else {
-              failedCount++;
-              sendUpdate(`❌ Create failed: "${item.title}"`, 'failed');
-            }
-            await new Promise(resolve => setTimeout(resolve, 200));
-          } catch (error) {
-            failedCount++;
-            sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
-            await new Promise(resolve => setTimeout(resolve, 400));
-          }
-        }
-        
-        if (i < createChunks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-      }
-      
-    } else {
-      // Smart/Incremental mode: Calculate differences
-      sendUpdate('🔍 Analyzing differences (Smart Diff)...', 'analysis');
-      
-      // Create lookup maps for fast comparison
-      const notionByUrl = new Map();
-      const notionByTitle = new Map();
-      
-      for (const page of notionPages) {
-        const url = page.properties?.URL?.url;
-        const title = page.properties?.Name?.title?.[0]?.text?.content;
-        
-        if (url) {
-          notionByUrl.set(normalizeUrl(url), page);
-        }
-        if (title) {
-          notionByTitle.set(normalizeTitle(title), page);
-        }
-      }
-      
-      const operations = {
-        create: [],
-        update: [],
-        skip: []
-      };
-      
-      // Analyze each raindrop
-      for (const item of raindrops) {
-        const normUrl = normalizeUrl(item.link);
-        const normTitle = normalizeTitle(item.title);
-        
-        // Smart matching: URL first, then title fallback
-        const existingPage = notionByUrl.get(normUrl) || notionByTitle.get(normTitle);
-        
-        if (existingPage) {
-          // Check if update needed
-          const currentTitle = existingPage.properties?.Name?.title?.[0]?.text?.content || '';
-          const currentUrl = existingPage.properties?.URL?.url || '';
-          
-          const currentTags = new Set();
-          if (existingPage.properties?.Tags?.multi_select) {
-            existingPage.properties.Tags.multi_select.forEach(tag => {
-              currentTags.add(tag.name);
-            });
-          }
-          
-          const needsUpdate = 
-            (normalizeTitle(currentTitle) !== normalizeTitle(item.title)) ||
-            (normalizeUrl(currentUrl) !== normUrl) ||
-            !tagsMatch(currentTags, item.tags || []);
-          
-          if (needsUpdate) {
-            operations.update.push({ item, existingPage });
-          } else {
-            operations.skip.push(item);
-          }
-        } else {
-          operations.create.push(item);
-        }
-      }
-      
-      function tagsMatch(currentTags, newTags) {
-        if (currentTags.size !== newTags.length) return false;
-        for (const tag of newTags) {
-          if (!currentTags.has(tag)) return false;
-        }
-        return true;
-      }
-      
-      // Handle orphaned pages (if deleteOrphaned is true)
-      if (deleteOrphaned && mode === 'smart') {
-        const raindropUrls = new Set(raindrops.map(r => normalizeUrl(r.link)));
-        for (const page of notionPages) {
-          const pageUrl = normalizeUrl(page.properties?.URL?.url);
-          if (pageUrl && !raindropUrls.has(pageUrl)) {
-            operations.delete = operations.delete || [];
-            operations.delete.push(page);
-          }
-        }
-      }
-      
-      skippedCount = operations.skip.length;
-      const totalOperations = operations.create.length + operations.update.length + (operations.delete?.length || 0);
-      
-      const efficiency = raindrops.length > 0 ? 
-        Math.round(((raindrops.length - totalOperations) / raindrops.length) * 100) : 100;
-      
-      sendUpdate(`🔍 Smart Diff complete: ${operations.create.length} to add, ${operations.update.length} to update, ${skippedCount} already synced`, 'analysis');
-      sendUpdate(`🚀 Processing ${totalOperations} operations (${efficiency}% efficiency!)`, 'info');
-      
-      if (totalOperations === 0) {
-        sendUpdate('🎉 Everything already synced! No changes needed.', 'complete');
-        broadcastSSEData({ 
-          complete: true, 
-          finalCounts: { added: 0, updated: 0, deleted: 0, skipped: skippedCount, failed: 0 },
-          mode,
-          efficiency: { percentage: 100 }
-        });
-        return { complete: true };
-      }
-      
-      // ===== PHASE 3: EXECUTE OPERATIONS =====
-      
-      // Delete orphaned pages first (if any)
-      if (operations.delete && operations.delete.length > 0) {
-        sendUpdate(`🗑️ Removing ${operations.delete.length} orphaned pages...`, 'processing');
-        for (const page of operations.delete) {
-          try {
-            await deleteNotionPage(page.id);
-            deletedCount++;
-            await new Promise(resolve => setTimeout(resolve, 200));
-          } catch (error) {
-            failedCount++;
-            sendUpdate(`❌ Delete failed: ${error.message}`, 'failed');
-            await new Promise(resolve => setTimeout(resolve, 400));
-          }
-        }
-      }
-      
-      // Create new pages
-      if (operations.create.length > 0) {
-        sendUpdate(`➕ Creating ${operations.create.length} new pages...`, 'processing');
-        for (const item of operations.create) {
-          try {
-            const result = await createNotionPage(item);
-            if (result.success) {
-              addedCount++;
-              sendUpdate(`✅ Created: "${item.title}"`, 'added');
-            } else {
-              failedCount++;
-              sendUpdate(`❌ Create failed: "${item.title}"`, 'failed');
-            }
-            await new Promise(resolve => setTimeout(resolve, 200));
-          } catch (error) {
-            failedCount++;
-            sendUpdate(`❌ Error creating "${item.title}": ${error.message}`, 'failed');
-            await new Promise(resolve => setTimeout(resolve, 400));
-          }
-        }
-      }
-      
-      // Update existing pages
-      if (operations.update.length > 0) {
-        sendUpdate(`🔄 Updating ${operations.update.length} existing pages...`, 'processing');
-        for (const { item, existingPage } of operations.update) {
-          try {
-            const success = await updateNotionPage(existingPage.id, item);
-            if (success) {
-              updatedCount++;
-              sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
-            } else {
-              failedCount++;
-              sendUpdate(`❌ Update failed: "${item.title}"`, 'failed');
-            }
-            await new Promise(resolve => setTimeout(resolve, 200));
-          } catch (error) {
-            failedCount++;
-            sendUpdate(`❌ Error updating "${item.title}": ${error.message}`, 'failed');
-            await new Promise(resolve => setTimeout(resolve, 400));
-          }
-        }
-      }
-    }
-    
-    // ===== FINAL SUMMARY =====
-    const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
-    
-    sendUpdate(`🎉 Smart Sync completed in ${duration}s!`, 'complete');
-    
-    if (mode === 'reset') {
-      sendUpdate(`📊 Results: ${addedCount} created, ${deletedCount} deleted, ${failedCount} failed`, 'summary');
-    } else {
-      const efficiency = raindrops.length > 0 ? 
-        Math.round(((raindrops.length - (addedCount + updatedCount)) / raindrops.length) * 100) : 100;
-      sendUpdate(`📊 Results: ${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped, ${failedCount} failed`, 'summary');
-      sendUpdate(`📈 Efficiency: ${efficiency}% (processed only necessary changes)`, 'info');
-    }
-    
-    console.log(`✅ [${lockId}] SMART SYNC COMPLETE: ${duration}s`);
-    
-    if (currentSync) {
-      currentSync.completed = true;
-      currentSync.isRunning = false;
-    }
-    
-    broadcastSSEData({ 
-      complete: true,
-      finalCounts: { added: addedCount, updated: updatedCount, deleted: deletedCount, skipped: skippedCount, failed: failedCount },
-      mode,
-      duration
-    });
-    
-    return { complete: true };
-    
-  } catch (error) {
-    console.error(`❌ [${lockId}] SMART SYNC ERROR:`, error);
-    broadcastSSEData({
-      message: `Smart Sync failed: ${error.message}`,
-      type: 'failed',
-      complete: true
-    });
-    throw error;
+  .dashboard {
+    padding: var(--spacing-lg) 0;
+  }
+  
+  .dashboard-actions {
+    margin-top: var(--spacing-md);
+  }
+  
+  .decorative-lines {
+    display: none; /* Hide decorative lines on mobile for cleaner look */
+  }
+  
+  .sync-button {
+    min-width: auto;
+    width: 100%;
+    font-size: var(--font-size-medium);
+  }
+  
+  .stat-group {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .efficiency-number {
+    font-size: var(--font-size-large);
   }
 }
 
-// Main Vercel export function
-module.exports = async (req, res) => {
-  try {
-    console.log('Request:', req.method, req.url);
-    
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    
-    if (req.method === 'OPTIONS') {
-      res.status(200).end();
-      return;
-    }
-    
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const password = url.searchParams.get('password');
-    const mode = url.searchParams.get('mode') || 'smart';
-    const limit = parseInt(url.searchParams.get('limit') || '0', 10);
-    const daysBack = parseInt(url.searchParams.get('daysBack') || '30', 10);
-    const deleteOrphaned = url.searchParams.get('deleteOrphaned') === 'true';
-    
-    // Password check
-    if (!password || password !== process.env.ADMIN_PASSWORD) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
-    
-    const pathname = url.pathname;
-    
-    // Health check
-    if (pathname === '/health') {
-      res.json({ status: 'ok', timestamp: new Date().toISOString() });
-      return;
-    }
-    
-    // API: Get counts
-    if (pathname === '/api/counts') {
-      try {
-        const [raindropTotal, notionTotal] = await Promise.all([
-          getRaindropTotal(),
-          getTotalNotionPages()
-        ]);
-        
-        res.json({
-          raindropTotal,
-          notionTotal,
-          isSynced: Math.abs(raindropTotal - notionTotal) <= 5,
-          success: true
-        });
-      } catch (error) {
-        res.status(500).json({ error: error.message });
-      }
-      return;
-    }
-    
-    // Sync stream - the heart of the system
-    if (pathname === '/sync-stream') {
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      
-      const streamId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-      activeStreams.set(streamId, res);
-      
-      console.log(`🔗 NEW SYNC REQUEST: ${streamId}, mode: ${mode}`);
-      
-      // Check if another sync is running
-      if (GLOBAL_SYNC_LOCK) {
-        const lockDuration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
-        console.log(`🚫 SYNC LOCK ACTIVE - Lock ID: ${SYNC_LOCK_ID}, Duration: ${lockDuration}s`);
-        
-        res.write(`data: ${JSON.stringify({
-          message: `⏸️ Sync already running (${lockDuration}s elapsed). Please wait...`,
-          type: 'waiting',
-          lockInfo: { locked: true, lockId: SYNC_LOCK_ID, duration: lockDuration }
-        })}\n\n`);
-        return;
-      }
-      
-      // Set global lock
-      GLOBAL_SYNC_LOCK = true;
-      SYNC_START_TIME = Date.now();
-      SYNC_LOCK_ID = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-      
-      console.log(`🔐 SETTING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
-      
-      // Create new sync process
-      currentSync = {
-        mode,
-        isRunning: true,
-        lockId: SYNC_LOCK_ID,
-        startTime: Date.now(),
-        counts: { added: 0, updated: 0, deleted: 0, skipped: 0, failed: 0 },
-        completed: false
-      };
-      
-      // Start the smart sync with options
-      const syncOptions = {
-        mode,
-        limit,
-        daysBack,
-        deleteOrphaned
-      };
-      
-      const syncPromise = performSmartSync(syncOptions);
-      
-      // Handle sync completion
-      syncPromise
-        .then(() => {
-          console.log(`✅ Sync completed successfully - Lock ID: ${SYNC_LOCK_ID}`);
-        })
-        .catch(error => {
-          console.error(`❌ SYNC ERROR - Lock ID: ${SYNC_LOCK_ID}:`, error);
-          broadcastSSEData({
-            message: `Sync failed: ${error.message}`,
-            type: 'failed',
-            complete: true
-          });
-        })
-        .finally(() => {
-          // Always release lock
-          console.log(`🔓 RELEASING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
-          GLOBAL_SYNC_LOCK = false;
-          SYNC_START_TIME = null;
-          SYNC_LOCK_ID = null;
-          
-          if (currentSync) {
-            currentSync.isRunning = false;
-            currentSync = null;
-          }
-          
-          activeStreams.delete(streamId);
-        });
-      
-      // Handle client disconnect
-      req.on('close', () => {
-        activeStreams.delete(streamId);
-      });
-      
-      return;
-    }
-    
-    // Pages
-    if (pathname === '/sync') {
-      const syncMode = mode || 'smart';
-      const pageTitle = syncMode === 'reset' ? 'Reset & Full Sync' : 
-                       syncMode === 'incremental' ? 'Incremental Sync' : 'Smart Sync';
-      const pageDescription = syncMode === 'reset' ? 'Delete all Notion pages and recreate from Raindrop' :
-                             syncMode === 'incremental' ? 'Sync only recent bookmarks' : 'Smart analysis - only sync what needs to change';
-      
-      res.setHeader('Content-Type', 'text/html');
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>${pageTitle}</title>
-          <link rel="stylesheet" href="/public/styles/design-system.css">
-          <link rel="stylesheet" href="/public/styles/dashboard.css">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        </head>
-        <body>
-          <div class="container">
-            <a href="/?password=${password}" class="back-button">← Back to Dashboard</a>
-            <h1 class="text-huge">${pageTitle}</h1>
-            <div class="text-medium" style="color: #666; margin-bottom: 40px;">${pageDescription}</div>
-            
-            <button id="syncBtn" onclick="startSync()" class="text-huge" style="background: none; border: none; cursor: pointer; margin: 20px 0;">
-              Start ${pageTitle}
-            </button>
-            
-            <div id="status" style="background: #f5f5f5; border-radius: 8px; padding: 20px; margin: 20px 0; max-height: 400px; overflow-y: auto; display: none;"></div>
-            
-            <script>
-              let currentEventSource = null;
-              
-              function startSync() {
-                const btn = document.getElementById('syncBtn');
-                const status = document.getElementById('status');
-                
-                btn.disabled = true;
-                btn.textContent = 'Sync Running...';
-                status.style.display = 'block';
-                status.innerHTML = '<div style="padding: 8px; margin: 4px 0; border-left: 3px solid #3b82f6; background: rgba(59, 130, 246, 0.1); font-family: monospace; font-size: 14px;">🚀 Starting sync...</div>';
-                
-                const syncUrl = '/sync-stream?password=${password}&mode=${syncMode}&daysBack=${daysBack}&deleteOrphaned=${deleteOrphaned}';
-                connectToSync(syncUrl);
-              }
-              
-              function addMessage(message, type = 'info') {
-                const status = document.getElementById('status');
-                const div = document.createElement('div');
-                div.style.cssText = 'padding: 8px; margin: 4px 0; border-left: 3px solid #ccc; font-family: monospace; font-size: 14px;';
-                
-                if (type === 'success' || type === 'added') div.style.borderLeftColor = '#22c55e';
-                if (type === 'error' || type === 'failed') div.style.borderLeftColor = '#ef4444';
-                if (type === 'info') div.style.borderLeftColor = '#3b82f6';
-                if (type === 'updated') div.style.borderLeftColor = '#f59e0b';
-                if (type === 'complete') div.style.borderLeftColor = '#22c55e';
-                if (type === 'analysis') div.style.borderLeftColor = '#6366f1';
-                
-                div.textContent = message;
-                status.appendChild(div);
-                status.scrollTop = status.scrollHeight;
-              }
-              
-              function connectToSync(url) {
-                if (currentEventSource) {
-                  currentEventSource.close();
-                }
-                
-                addMessage('🔗 Connecting to sync stream...', 'info');
-                currentEventSource = new EventSource(url);
-                
-                currentEventSource.onopen = function() {
-                  addMessage('✅ Connected to sync stream', 'success');
-                };
-                
-                currentEventSource.onmessage = function(event) {
-                  try {
-                    const data = JSON.parse(event.data);
-                    
-                    if (data.message) {
-                      addMessage(data.message, data.type || 'info');
-                    }
-                    
-                    if (data.complete) {
-                      currentEventSource.close();
-                      currentEventSource = null;
-                      document.getElementById('syncBtn').disabled = false;
-                      document.getElementById('syncBtn').textContent = 'Start ${pageTitle}';
-                      
-                      if (data.finalCounts) {
-                        const counts = data.finalCounts;
-                        addMessage(\`🎉 SYNC COMPLETE! Added: \${counts.added}, Updated: \${counts.updated}, Deleted: \${counts.deleted}, Skipped: \${counts.skipped}, Failed: \${counts.failed}\`, 'complete');
-                      }
-                    }
-                    
-                  } catch (error) {
-                    console.error('Error parsing sync message:', error);
-                    addMessage('❌ Error parsing sync data', 'error');
-                  }
-                };
-                
-                currentEventSource.onerror = function(error) {
-                  console.error('EventSource error:', error);
-                  currentEventSource.close();
-                  currentEventSource = null;
-                  document.getElementById('syncBtn').disabled = false;
-                  document.getElementById('syncBtn').textContent = 'Start ${pageTitle}';
-                  addMessage('❌ Connection error - sync interrupted', 'error');
-                };
-              }
-            </script>
-          </div>
-        </body>
-        </html>
-      `);
-      return;
-    }
-    
-    // Dashboard
-    if (pathname === '/') {
-      res.setHeader('Content-Type', 'text/html');
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Raindrop/Notion Sync</title>
-          <link rel="stylesheet" href="/public/styles/design-system.css">
-          <link rel="stylesheet" href="/public/styles/dashboard.css">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        </head>
-        <body>
-          <div class="container">
-            <div class="dashboard">
-              <div class="status-indicator not-synced" id="indicator"></div>
-              <h1 class="text-huge">Raindrop/Notion Sync</h1>
-              <div class="text-huge" id="raindrop">... Raindrop Bookmarks</div>
-              <div class="text-huge" id="notion">... Notion Pages</div>
-              <div class="text-huge" id="status" style="color: #666; margin-bottom: 40px;">Loading...</div>
-              
-              <div class="dashboard-actions">
-                <a href="/sync?password=${password}&mode=smart" class="action-button primary">
-                  Smart Sync ↻
-                </a>
-                
-                <a href="/sync?password=${password}&mode=incremental" class="action-button secondary">
-                  Recent Only (${daysBack} days)
-                </a>
-                
-                <a href="/sync?password=${password}&mode=reset&deleteOrphaned=true" class="action-button secondary" style="color: #ff4444;">
-                  Reset & Full Sync
-                </a>
-              </div>
-            </div>
-          </div>
-          
-          <script>
-            fetch('/api/counts?password=${password}')
-              .then(r => r.json())
-              .then(data => {
-                document.getElementById('raindrop').textContent = data.raindropTotal.toLocaleString() + ' Raindrop Bookmarks';
-                document.getElementById('notion').textContent = data.notionTotal.toLocaleString() + ' Notion Pages';
-                
-                const diff = Math.abs(data.raindropTotal - data.notionTotal);
-                const synced = diff <= 5;
-                
-                if (synced) {
-                  document.getElementById('indicator').classList.add('synced');
-                  document.getElementById('indicator').classList.remove('not-synced');
-                  document.getElementById('status').textContent = 'All bookmarks are synchronized';
-                  document.getElementById('status').style.color = '#17d827';
-                } else {
-                  document.getElementById('status').textContent = diff.toLocaleString() + ' bookmarks need synchronization';
-                  document.getElementById('status').style.color = '#ff0000';
-                }
-              })
-              .catch(e => {
-                document.getElementById('status').textContent = 'Error loading status';
-                document.getElementById('status').style.color = '#ff0000';
-                console.error('Count loading error:', e);
-              });
-          </script>
-        </body>
-        </html>
-      `);
-      return;
-    }
-    
-    res.status(404).json({ error: 'Not found' });
-    
-  } catch (error) {
-    console.error('Function error:', error);
-    res.status(500).json({ error: error.message });
+@media (max-width: 480px) {
+  .dashboard-section {
+    padding: 0 var(--container-padding-mobile);
   }
-};
+  
+  .section-content {
+    font-size: calc(var(--font-size-huge) * 0.5);
+  }
+  
+  .status-indicator {
+    width: 80px;
+    height: 16px;
+    margin-bottom: var(--spacing-md);
+  }
+  
+  .action-button:hover,
+  .sync-button:hover {
+    transform: none; /* Disable hover transform on touch devices */
+  }
+  
+  .stat-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-sm);
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .status-indicator,
+  .status-message {
+    border: 2px solid currentColor;
+  }
+  
+  .decorative-lines {
+    opacity: 0.3;
+  }
+  
+  .error-code,
+  .error-details-extended,
+  .technical-details {
+    border-width: 2px;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .action-button,
+  .count-display,
+  .status-indicator,
+  .sync-button,
+  .stat-item,
+  .stat-number,
+  .sync-update {
+    animation: none !important;
+    transition: none !important;
+  }
+  
+  .action-button:hover,
+  .sync-button:hover,
+  .count-display:hover {
+    transform: none;
+  }
+}
