@@ -1,153 +1,151 @@
-const express = require('express');
-const router = express.Router();
+// Fastify server with full sync capabilities and view rendering
+const path = require('path');
+const Fastify = require('fastify');
+const fastify = Fastify({ logger: true });
+
+const { getAllRaindrops, getRaindropTotal, getRecentRaindrops } = require('../services/raindrop');
 const {
-  getAllRaindrops, getRaindropTotal, getRecentRaindrops
-} = require('../services/raindrop');
-const {
-  getNotionPages, getTotalNotionPages, createNotionPage,
-  updateNotionPage, deleteNotionPage
+  getNotionPages,
+  getTotalNotionPages,
+  createNotionPage,
+  updateNotionPage,
+  deleteNotionPage
 } = require('../services/notion');
 
-// SSE state
-let GLOBAL_SYNC_LOCK = false;
-let SYNC_START_TIME = null;
-let SYNC_LOCK_ID = null;
-let currentSync = null;
-const activeStreams = new Map();
-
-function broadcastSSEData(data) {
-  for (const [id, res] of activeStreams.entries()) {
-    try {
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    } catch {
-      activeStreams.delete(id);
-    }
-  }
-}
-
-// Health check
-router.get('/health', (_, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Register view engine and static assets
+fastify.register(require('@fastify/view'), {
+  engine: {
+    handlebars: require('handlebars')
+  },
+  root: path.join(__dirname, '../views'),
+  layout: false
 });
 
-// Counts API
-router.get('/api/counts', async (req, res) => {
-  const { password } = req.query;
-  if (password !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+fastify.register(require('@fastify/static'), {
+  root: path.join(__dirname, '../public'),
+  prefix: '/public/'
+});
+
+// Dashboard route
+fastify.get('/', async (req, reply) => {
+  const password = req.query.password || '';
 
   try {
-    const [raindropTotal, notionTotal] = await Promise.all([
-      getRaindropTotal(),
-      getTotalNotionPages()
-    ]);
+    const raindropTotal = await getRaindropTotal(password);
+    const notionTotal = await getTotalNotionPages(password);
 
-    res.json({
+    reply.view('index', {
+      password,
       raindropTotal,
       notionTotal,
-      isSynced: Math.abs(raindropTotal - notionTotal) <= 5,
-      success: true
+      diff: Math.abs(raindropTotal - notionTotal)
     });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  } catch (error) {
+    req.log.error(error);
+    reply.view('error', { error: error.message });
   }
 });
 
-// Sync stream
-router.get('/sync-stream', async (req, res) => {
-  const { password, mode = 'smart', daysBack = '30', deleteOrphaned = 'false', limit = '0' } = req.query;
-  if (password !== process.env.ADMIN_PASSWORD) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
+// Sync UI route
+fastify.get('/sync', async (req, reply) => {
+  const password = req.query.password || '';
+  const mode = req.query.mode || 'smart';
+  const daysBack = parseInt(req.query.daysBack || '30');
+  const deleteOrphaned = req.query.deleteOrphaned === 'true';
+
+  try {
+    reply.view('sync', {
+      password,
+      syncMode: mode,
+      daysBack,
+      deleteOrphaned,
+      pageTitle: mode === 'reset' ? 'Reset & Full Sync' : mode === 'incremental' ? 'Incremental Sync' : 'Smart Sync',
+      pageDescription:
+        mode === 'reset'
+          ? 'Delete all Notion pages and recreate from Raindrop'
+          : mode === 'incremental'
+          ? 'Sync only recent bookmarks'
+          : 'Smart analysis — only sync what needs to change'
+    });
+  } catch (error) {
+    req.log.error(error);
+    reply.view('error', { error: error.message });
   }
+});
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
+// Sync stream route with SSE
+fastify.get('/sync-stream', async (req, reply) => {
+  const password = req.query.password || '';
+  const mode = req.query.mode || 'smart';
+  const daysBack = parseInt(req.query.daysBack || '30');
+  const deleteOrphaned = req.query.deleteOrphaned === 'true';
 
-  const streamId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  activeStreams.set(streamId, res);
+  reply.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive'
+  });
 
-  if (GLOBAL_SYNC_LOCK) {
-    const duration = Math.round((Date.now() - SYNC_START_TIME) / 1000);
-    res.write(`data: ${JSON.stringify({
-      message: `⏸️ Sync already running (${duration}s elapsed). Please wait...`,
-      type: 'waiting',
-      lockInfo: { locked: true, lockId: SYNC_LOCK_ID, duration }
-    })}\n\n`);
-    return;
-  }
-
-  GLOBAL_SYNC_LOCK = true;
-  SYNC_START_TIME = Date.now();
-  SYNC_LOCK_ID = `sync_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  currentSync = { isRunning: true, lockId: SYNC_LOCK_ID };
-
-  const syncOptions = {
-    mode,
-    daysBack: parseInt(daysBack, 10),
-    deleteOrphaned: deleteOrphaned === 'true',
-    limit: parseInt(limit, 10)
+  const send = (data) => {
+    reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  const syncPromise = require('./sync-core')(syncOptions, {
-    getAllRaindrops,
-    getRecentRaindrops,
-    getNotionPages,
-    createNotionPage,
-    updateNotionPage,
-    deleteNotionPage,
-    broadcast: broadcastSSEData
-  });
+  const end = () => {
+    reply.raw.end();
+  };
 
-  syncPromise.finally(() => {
-    GLOBAL_SYNC_LOCK = false;
-    SYNC_START_TIME = null;
-    SYNC_LOCK_ID = null;
-    currentSync = null;
-    activeStreams.delete(streamId);
-  });
+  try {
+    send({ message: '🚀 Starting sync...', type: 'info' });
 
-  req.on('close', () => {
-    activeStreams.delete(streamId);
-  });
+    const raindrops = mode === 'incremental'
+      ? await getRecentRaindrops(password, daysBack)
+      : await getAllRaindrops(password);
+    const notionPages = await getNotionPages(password);
+
+    const notionMap = new Map(notionPages.map(page => [page.url, page]));
+
+    let added = 0, updated = 0, deleted = 0, skipped = 0, failed = 0;
+
+    for (const drop of raindrops) {
+      const notionPage = notionMap.get(drop.url);
+      try {
+        if (!notionPage) {
+          await createNotionPage(drop, password);
+          send({ message: `➕ Added: ${drop.title}`, type: 'added' });
+          added++;
+        } else {
+          await updateNotionPage(drop, notionPage, password);
+          send({ message: `🔄 Updated: ${drop.title}`, type: 'updated' });
+          updated++;
+        }
+      } catch (err) {
+        failed++;
+        send({ message: `❌ Failed on: ${drop.title}`, type: 'failed' });
+      }
+    }
+
+    if (deleteOrphaned) {
+      for (const page of notionPages) {
+        if (!raindrops.some(drop => drop.url === page.url)) {
+          await deleteNotionPage(page, password);
+          send({ message: `🗑️ Deleted orphan: ${page.title}`, type: 'deleted' });
+          deleted++;
+        }
+      }
+    }
+
+    send({
+      message: `🎉 SYNC COMPLETE! Added: ${added}, Updated: ${updated}, Deleted: ${deleted}, Skipped: ${skipped}, Failed: ${failed}`,
+      type: 'complete',
+      complete: true,
+      finalCounts: { added, updated, deleted, skipped, failed }
+    });
+
+    end();
+  } catch (err) {
+    send({ message: `❌ Sync error: ${err.message}`, type: 'error' });
+    end();
+  }
 });
 
-// Pages
-
-router.get('/', (req, res) => {
-  const { password = '' } = req.query;
-  res.render('index', { password });
-});
-
-router.get('/sync', (req, res) => {
-  const { password = '', mode = 'smart', daysBack = '30', deleteOrphaned = 'false' } = req.query;
-
-  const pageTitle =
-    mode === 'reset' ? 'Reset & Full Sync' :
-    mode === 'incremental' ? 'Incremental Sync' :
-    'Smart Sync';
-
-  const pageDescription =
-    mode === 'reset' ? 'Delete all Notion pages and recreate from Raindrop' :
-    mode === 'incremental' ? 'Sync only recent bookmarks' :
-    'Smart analysis — only sync what needs to change';
-
-  res.render('sync', {
-    password,
-    syncMode: mode,
-    daysBack: parseInt(daysBack, 10),
-    deleteOrphaned: deleteOrphaned === 'true',
-    pageTitle,
-    pageDescription
-  });
-});
-
-// Catch-all 404
-router.use((req, res) => {
-  res.status(404).render('error', {
-    statusCode: 404,
-    message: 'Page not found'
-  });
-});
-
-module.exports = router;
+module.exports = fastify;
