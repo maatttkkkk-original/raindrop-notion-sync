@@ -10,11 +10,10 @@
   <link rel="stylesheet" href="/public/styles/dashboard.css">
 </head>
 <body>
-  <div class="container">
-    <main class="sync-page" id="main-content" role="main">
-      <header class="sync-header">
-        <a href="/?password={{password}}" class="back-button">← Back to Dashboard</a>
-        
+  <main class="dashboard-8-section" id="main-content" role="main">
+    <!-- Section 1: Title -->
+    <div class="dashboard-section section-1 bg-white">
+      <div class="section-content">
         <h1 class="text-huge sync-title">
           {{#if (eq mode "reset")}}
             Reset & Full Sync
@@ -24,7 +23,31 @@
             Smart Sync
           {{/if}}
         </h1>
-        
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 2: Action Button -->
+    <div class="dashboard-section section-2 bg-yellow" id="action-section">
+      <div class="section-content">
+        <button id="syncBtn" class="section-action-button text-huge text-black" type="button">
+          {{#if (eq mode "reset")}}
+            Start Reset & Full Sync
+          {{else if (eq mode "incremental")}}
+            Start Incremental Sync
+          {{else}}
+            Start Smart Sync
+          {{/if}}
+        </button>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 3: Description -->
+    <div class="dashboard-section section-3 bg-white" id="description-section">
+      <div class="section-content">
         <p class="text-medium sync-description">
           {{#if (eq mode "reset")}}
             Delete all Notion pages and recreate from Raindrop
@@ -34,39 +57,29 @@
             Smart analysis - only sync what needs to change
           {{/if}}
         </p>
-      </header>
-
-      <section class="sync-interface">
-        <div class="sync-controls">
-          <button id="syncBtn" class="action-button primary sync-button" type="button">
-            {{#if (eq mode "reset")}}
-              Start Reset & Full Sync
-            {{else if (eq mode "incremental")}}
-              Start Incremental Sync
-            {{else}}
-              Start Smart Sync
-            {{/if}}
-          </button>
-        </div>
-
-        <div class="sync-progress" id="progress-section">
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 4: Progress/Status -->
+    <div class="dashboard-section section-4 bg-white" id="progress-section">
+      <div class="section-content">
+        <div class="sync-progress">
           <div class="progress-bar">
             <div class="progress-fill" id="progress-fill"></div>
           </div>
-          <div class="progress-text" id="progress-text">Preparing sync...</div>
+          <div class="progress-text" id="progress-text">Ready to sync...</div>
         </div>
-
-        <div class="sync-status">
-          <div 
-            id="status" 
-            class="status-display" 
-            role="log" 
-            aria-live="polite" 
-            aria-label="Sync progress updates"
-          ></div>
-        </div>
-
-        <div class="sync-stats" id="sync-stats">
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 5: Statistics -->
+    <div class="dashboard-section section-5 bg-white" id="stats-section">
+      <div class="section-content">
+        <div class="sync-stats" id="sync-stats" style="display: none;">
           <div class="stat-group">
             <div class="stat-item">
               <span class="stat-number" id="added-count">0</span>
@@ -98,56 +111,80 @@
           </div>
           {{/unless}}
         </div>
-      </section>
-
-      <aside class="sync-info">
-        {{#if (eq mode "reset")}}
-        <div class="info-card warning">
-          <h3>⚠️ Reset Mode</h3>
-          <p>This will delete all existing Notion pages and recreate them from Raindrop. This operation cannot be undone.</p>
-          <ul>
-            <li>All Notion pages will be deleted</li>
-            <li>All bookmarks will be recreated</li>
-            <li>Custom Notion data will be lost</li>
-          </ul>
-        </div>
-        {{else if (eq mode "incremental")}}
-        <div class="info-card">
-          <h3>⚡ Incremental Sync</h3>
-          <p>Fast synchronization focusing on recent activity:</p>
-          <ul>
-            <li>Last {{daysBack}} days of bookmarks</li>
-            <li>Modified items only</li>
-            <li>Minimal processing time</li>
-            <li>Preserves existing data</li>
-          </ul>
-        </div>
-        {{else}}
-        <div class="info-card">
-          <h3>🧠 Smart Sync Technology</h3>
-          <p>Advanced algorithm that analyzes all data and processes only necessary changes:</p>
-          <ul>
-            <li>Intelligent difference detection</li>
-            <li>95%+ efficiency improvement</li>
-            <li>Preserves unchanged data</li>
-            <li>Minimal API usage</li>
-          </ul>
-        </div>
-        {{/unless}}
-        
-        <div class="info-card">
-          <h3>📊 Live Updates</h3>
-          <p>Real-time progress tracking with detailed insights:</p>
-          <ul>
-            <li>Live progress streaming</li>
-            <li>Operation counts</li>
-            <li>Efficiency metrics</li>
-            <li>Error reporting</li>
-          </ul>
-        </div>
-      </aside>
-    </main>
-  </div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 6: Completion Status -->
+    <div class="dashboard-section section-6 bg-white" id="completion-section">
+      <div class="section-content">
+        <div id="completion-message" class="text-large" style="display: none;"></div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 7: Log Area -->
+    <div class="dashboard-section section-7 bg-white log-section" id="log-section">
+      <div class="section-content">
+        <div 
+          id="status" 
+          class="status-display" 
+          role="log" 
+          aria-live="polite" 
+          aria-label="Sync progress updates"
+          style="display: none;"
+        ></div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 8: Back Button -->
+    <div class="dashboard-section section-8 bg-light-gray back-section">
+      <div class="section-content">
+        <a href="/?password={{password}}" class="back-button text-large">← Back to Dashboard</a>
+      </div>
+    </div>
+    
+    <!-- Hidden Info Cards for Reference -->
+    <div style="display: none;">
+      {{#if (eq mode "reset")}}
+      <div class="info-card warning">
+        <h3>⚠️ Reset Mode</h3>
+        <p>This will delete all existing Notion pages and recreate them from Raindrop. This operation cannot be undone.</p>
+        <ul>
+          <li>All Notion pages will be deleted</li>
+          <li>All bookmarks will be recreated</li>
+          <li>Custom Notion data will be lost</li>
+        </ul>
+      </div>
+      {{else if (eq mode "incremental")}}
+      <div class="info-card">
+        <h3>⚡ Incremental Sync</h3>
+        <p>Fast synchronization focusing on recent activity:</p>
+        <ul>
+          <li>Last {{daysBack}} days of bookmarks</li>
+          <li>Modified items only</li>
+          <li>Minimal processing time</li>
+          <li>Preserves existing data</li>
+        </ul>
+      </div>
+      {{else}}
+      <div class="info-card">
+        <h3>🧠 Smart Sync Technology</h3>
+        <p>Advanced algorithm that analyzes all data and processes only necessary changes:</p>
+        <ul>
+          <li>Intelligent difference detection</li>
+          <li>95%+ efficiency improvement</li>
+          <li>Preserves unchanged data</li>
+          <li>Minimal API usage</li>
+        </ul>
+      </div>
+      {{/unless}}
+    </div>
+  </main>
 
   <script src="/public/scripts/utils.js"></script>
   <script src="/public/scripts/sync.js"></script>

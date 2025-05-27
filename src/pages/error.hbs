@@ -10,19 +10,44 @@
   <link rel="stylesheet" href="/public/styles/dashboard.css">
 </head>
 <body>
-  <div class="container">
-    <main class="dashboard error-page" id="main-content" role="main">
-      <div 
-        class="status-indicator not-synced" 
-        role="img" 
-        aria-label="Error status indicator"
-      ></div>
-      
-      <h1 class="text-huge error-title">Error</h1>
-      
-      <div class="error-details">
-        <div class="text-medium error-label">Problem</div>
-        <div class="text-huge error-message" id="error-message">
+  <main class="dashboard-8-section" id="main-content" role="main">
+    <!-- Section 1: Title -->
+    <div class="dashboard-section section-1 bg-white">
+      <div class="section-content">
+        <h1 class="text-huge">Raindrop/Notion Sync</h1>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 2: Error Title -->
+    <div class="dashboard-section section-2 bg-white">
+      <div class="section-content">
+        <h2 class="text-huge text-red">Error</h2>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 3: Back Button -->
+    <div class="dashboard-section section-3 bg-yellow">
+      <div class="section-content">
+        <a 
+          href="/?password={{password}}" 
+          class="section-action-button text-huge text-black"
+          id="back-button"
+        >
+          Back ↺
+        </a>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 4: Error Message -->
+    <div class="dashboard-section section-4 bg-white">
+      <div class="section-content">
+        <div class="text-large error-message" id="error-message">
           {{#if error}}
             {{error}}
           {{else}}
@@ -30,79 +55,107 @@
           {{/if}}
         </div>
       </div>
-      
-      {{#if code}}
-      <div class="error-code">
-        <div class="text-small error-code-label">Error Code</div>
-        <div class="text-medium error-code-value">{{code}}</div>
-      </div>
-      {{/if}}
-      
-      {{#if details}}
-      <div class="error-details-extended">
-        <div class="text-small error-details-label">Details</div>
-        <div class="text-small error-details-text">{{details}}</div>
-      </div>
-      {{/if}}
-      
-      <div class="dashboard-actions error-actions" role="navigation" aria-label="Error recovery actions">
-        <a 
-          href="/?password={{password}}" 
-          class="action-button primary"
-          id="back-button"
-        >
-          Back to Dashboard ↤
-        </a>
-        
-        <button 
-          type="button"
-          class="action-button secondary"
-          id="retry-button"
-        >
-          Try Again ↻
-        </button>
-        
-        {{#if supportUrl}}
-        <a 
-          href="{{supportUrl}}" 
-          class="action-button secondary"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Get Help →
-        </a>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 5: Error Code -->
+    <div class="dashboard-section section-5 bg-white">
+      <div class="section-content">
+        {{#if code}}
+        <div class="error-code">
+          <div class="text-small error-code-label">Error Code</div>
+          <div class="text-medium error-code-value">{{code}}</div>
+        </div>
         {{/if}}
       </div>
-      
-      <details class="technical-details">
-        <summary class="text-small technical-summary">Technical Details</summary>
-        <div class="technical-content">
-          <div class="text-small">
-            <strong>Timestamp:</strong> <span id="error-timestamp"></span><br>
-            <strong>User Agent:</strong> <span id="user-agent"></span><br>
-            <strong>URL:</strong> <span id="current-url"></span><br>
-            {{#if stack}}
-            <strong>Stack Trace:</strong>
-            <pre class="stack-trace">{{stack}}</pre>
-            {{/if}}
-          </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 6: Error Details -->
+    <div class="dashboard-section section-6 bg-white">
+      <div class="section-content">
+        {{#if details}}
+        <div class="error-details-extended">
+          <div class="text-small error-details-label">Details</div>
+          <div class="text-small error-details-text">{{details}}</div>
         </div>
-      </details>
-      
-      <div class="decorative-lines" aria-hidden="true">
-        <div class="decorative-line"></div>
-        <div class="decorative-line"></div>
-        <div class="decorative-line"></div>
-        <div class="decorative-line"></div>
-        <div class="decorative-line"></div>
-        <div class="decorative-line"></div>
-        <div class="decorative-line"></div>
-        <div class="decorative-line"></div>
+        {{/if}}
       </div>
-    </main>
-  </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 7: Action Buttons -->
+    <div class="dashboard-section section-7 bg-white">
+      <div class="section-content">
+        <div class="dashboard-actions error-actions" role="navigation" aria-label="Error recovery actions">
+          <button 
+            type="button"
+            class="section-action-button text-medium text-black"
+            id="retry-button"
+          >
+            Try Again ↻
+          </button>
+          
+          {{#if supportUrl}}
+          <a 
+            href="{{supportUrl}}" 
+            class="section-action-button text-medium text-black"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Get Help →
+          </a>
+          {{/if}}
+        </div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 8: Technical Details -->
+    <div class="dashboard-section section-8 bg-light-gray back-section">
+      <div class="section-content">
+        <details class="technical-details">
+          <summary class="text-small technical-summary">Technical Details</summary>
+          <div class="technical-content">
+            <div class="text-small">
+              <strong>Timestamp:</strong> <span id="error-timestamp"></span><br>
+              <strong>User Agent:</strong> <span id="user-agent"></span><br>
+              <strong>URL:</strong> <span id="current-url"></span><br>
+              {{#if stack}}
+              <strong>Stack Trace:</strong>
+              <pre class="stack-trace">{{stack}}</pre>
+              {{/if}}
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+    
+    <!-- Hidden Status Indicator -->
+    <div 
+      class="status-indicator not-synced d-none" 
+      role="img" 
+      aria-label="Error status indicator"
+    ></div>
+  </main>
   
   <script src="/public/scripts/utils.js"></script>
   <script src="/public/scripts/enhancements.js"></script>
+  <script>
+    // Populate technical details
+    Utils.ready(() => {
+      const timestampEl = document.getElementById('error-timestamp');
+      const userAgentEl = document.getElementById('user-agent');
+      const currentUrlEl = document.getElementById('current-url');
+      
+      if (timestampEl) timestampEl.textContent = new Date().toISOString();
+      if (userAgentEl) userAgentEl.textContent = navigator.userAgent;
+      if (currentUrlEl) currentUrlEl.textContent = window.location.href;
+    });
+  </script>
 </body>
 </html>
