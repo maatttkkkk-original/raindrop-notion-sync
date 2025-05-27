@@ -16,7 +16,7 @@ fastify.register(require('@fastify/view'), {
   engine: {
     handlebars: require('handlebars')
   },
-  root: path.join(__dirname, '../views'),
+  root: path.join(__dirname, '../src/pages'),
   layout: false
 });
 
