@@ -19,46 +19,87 @@
     <button onclick="setState('loading')">Loading</button>
   </div>
 
-  <div class="container">
-    <main class="dashboard" id="main-content" role="main">
-      <div class="status-indicator synced" id="statusIndicator"></div>
-      
-      <h1 class="text-huge">Raindrop/Notion Sync</h1>
-      
-      <div class="count-display synced" id="raindropCount">
-        1365 Raindrop Bookmarks
+  <main class="dashboard-8-section" id="main-content" role="main">
+    <!-- Section 1: Title -->
+    <div class="dashboard-section section-1 bg-white">
+      <div class="section-content">
+        <h1 class="text-huge">Raindrop/Notion Sync</h1>
       </div>
-      
-      <div class="count-display synced" id="notionCount">
-        1365 Notion Pages
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 2: First Count -->
+    <div class="dashboard-section section-2 bg-white" id="raindrop-section">
+      <div class="section-content">
+        <div class="count-display" id="raindropCount">
+          <span class="text-huge text-green">1365 Raindrop Bookmarks</span>
+        </div>
       </div>
-      
-      <div class="status-message synced" id="statusMessage">
-        Synced
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 3: Second Count -->
+    <div class="dashboard-section section-3 bg-white" id="notion-section">
+      <div class="section-content">
+        <div class="count-display" id="notionCount">
+          <span class="text-huge text-green">1365 Notion Pages</span>
+        </div>
       </div>
-      
-      <div class="dashboard-actions">
-        <button class="action-button primary" id="primaryAction">
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 4: Status Message -->
+    <div class="dashboard-section section-4 bg-green" id="status-section">
+      <div class="section-content">
+        <div class="status-message" id="statusMessage">
+          <span class="text-huge text-white">Synced</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 5: Primary Action -->
+    <div class="dashboard-section section-5 bg-white" id="primary-action-section">
+      <div class="section-content">
+        <button class="section-action-button text-huge text-black" id="primaryAction">
           Sync New? ↻
         </button>
-        
-        <button class="action-button secondary" id="secondaryAction">
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 6: Secondary Action -->
+    <div class="dashboard-section section-6 bg-white" id="secondary-action-section">
+      <div class="section-content">
+        <button class="section-action-button text-huge text-black" id="secondaryAction">
           Reset / FullSync
         </button>
       </div>
-      
-      <div class="decorative-lines">
-        <div class="decorative-line line-1"></div>
-        <div class="decorative-line line-2"></div>
-        <div class="decorative-line line-3"></div>
-        <div class="decorative-line line-4"></div>
-        <div class="decorative-line line-5"></div>
-        <div class="decorative-line line-6"></div>
-        <div class="decorative-line line-7"></div>
-        <div class="decorative-line line-8"></div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 7: Additional Content/Log Area -->
+    <div class="dashboard-section section-7 bg-white log-section" id="log-section">
+      <div class="section-content">
+        <div id="status" class="status-display" role="log" aria-live="polite"></div>
       </div>
-    </main>
-  </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 8: Back Button -->
+    <div class="dashboard-section section-8 bg-light-gray back-section">
+      <div class="section-content">
+        <a href="#" class="back-button text-large">Back ↺</a>
+      </div>
+    </div>
+  </main>
 
   <script src="../scripts/utils.js"></script>
   <script src="../scripts/sync.js"></script>

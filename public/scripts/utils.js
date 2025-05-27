@@ -299,83 +299,127 @@ const Utils = {
     }
   },
 
-  // Test state management for test pages
-  testStates: {
-    // Dashboard test states
-    dashboard: {
-      synced: {
-        indicator: 'synced',
-        raindropCount: '1365 Raindrop Bookmarks',
-        raindropClass: 'synced',
-        notionCount: '1365 Notion Pages',
-        notionClass: 'synced',
-        statusMessage: 'All bookmarks are synchronized',
-        statusClass: 'synced',
-        primaryAction: 'Sync New? ↻',
-        secondaryAction: 'Reset / FullSync'
-      },
-      'not-synced': {
-        indicator: 'not-synced',
-        raindropCount: '1365 Raindrop Bookmarks',
-        raindropClass: 'not-synced',
-        notionCount: '65 Notion Pages',
-        notionClass: 'not-synced',
-        statusMessage: '1300 bookmarks need synchronization',
-        statusClass: 'not-synced',
-        primaryAction: 'Sync New? ↻',
-        secondaryAction: 'Reset / FullSync'
-      },
-      processing: {
-        indicator: 'processing',
-        raindropCount: '1365 Raindrop Bookmarks',
-        raindropClass: 'neutral',
-        notionCount: '... Notion Pages',
-        notionClass: 'neutral loading',
-        statusMessage: 'Sync in progress...',
-        statusClass: 'processing',
-        primaryAction: 'Stop!',
-        secondaryAction: 'Please Wait...'
-      },
-      error: {
-        indicator: 'not-synced',
-        raindropCount: 'Error loading counts',
-        raindropClass: 'not-synced error',
-        notionCount: 'Error loading counts',
-        notionClass: 'not-synced error',
-        statusMessage: 'Failed to load sync status',
-        statusClass: 'not-synced',
-        primaryAction: 'Retry ↻',
-        secondaryAction: 'Back ↤'
-      },
-      loading: {
-        indicator: 'processing',
-        raindropCount: '... Raindrop Bookmarks',
-        raindropClass: 'neutral loading',
-        notionCount: '... Notion Pages',
-        notionClass: 'neutral loading',
-        statusMessage: 'Loading...',
-        statusClass: 'processing',
-        primaryAction: 'Please Wait...',
-        secondaryAction: 'Cancel'
+  // 8-Section Layout Helpers
+  sections: {
+    // Get section element by number
+    getSection(number) {
+      return document.querySelector(`.section-${number}`);
+    },
+
+    // Set section background color
+    setSectionBackground(number, color) {
+      const section = this.getSection(number);
+      if (section) {
+        // Remove all background classes
+        section.classList.remove('bg-white', 'bg-yellow', 'bg-green', 'bg-red', 'bg-light-gray');
+        // Add new background class
+        section.classList.add(`bg-${color}`);
       }
     },
 
-    // Sync test modes
+    // Set section content
+    setSectionContent(number, content, textColor = 'black') {
+      const section = this.getSection(number);
+      if (section) {
+        const contentElement = section.querySelector('.section-content');
+        if (contentElement) {
+          contentElement.innerHTML = `<span class="text-huge text-${textColor}">${content}</span>`;
+        }
+      }
+    },
+
+    // Clear section content
+    clearSection(number) {
+      const section = this.getSection(number);
+      if (section) {
+        const contentElement = section.querySelector('.section-content');
+        if (contentElement) {
+          contentElement.innerHTML = '';
+        }
+      }
+    },
+
+    // Show/hide section
+    toggleSection(number, show = true) {
+      const section = this.getSection(number);
+      if (section) {
+        section.style.display = show ? 'flex' : 'none';
+      }
+    }
+  },
+
+  // Test state management for test pages
+  testStates: {
+    // Enhanced dashboard test states for 8-section layout
+    dashboard: {
+      synced: {
+        section1: { bg: 'white', content: 'Raindrop/Notion Sync', textColor: 'black' },
+        section2: { bg: 'white', content: '1365 Raindrop Bookmarks', textColor: 'green' },
+        section3: { bg: 'white', content: '1365 Notion Pages', textColor: 'green' },
+        section4: { bg: 'green', content: 'Synced', textColor: 'white' },
+        section5: { bg: 'white', content: 'Sync New? ↻', textColor: 'black' },
+        section6: { bg: 'white', content: '', textColor: 'black' },
+        section7: { bg: 'white', content: '', textColor: 'black' },
+        section8: { bg: 'light-gray', content: 'Back ↺', textColor: 'black' }
+      },
+      'not-synced': {
+        section1: { bg: 'white', content: 'Raindrop/Notion Sync', textColor: 'black' },
+        section2: { bg: 'white', content: '1365 Raindrop Bookmarks', textColor: 'red' },
+        section3: { bg: 'white', content: '65 Notion Pages', textColor: 'red' },
+        section4: { bg: 'red', content: '1300 Not Synced', textColor: 'white' },
+        section5: { bg: 'white', content: 'Sync New? ↻', textColor: 'black' },
+        section6: { bg: 'white', content: '', textColor: 'black' },
+        section7: { bg: 'white', content: '', textColor: 'black' },
+        section8: { bg: 'light-gray', content: 'Back ↺', textColor: 'black' }
+      },
+      processing: {
+        section1: { bg: 'white', content: 'Raindrop/Notion Sync', textColor: 'black' },
+        section2: { bg: 'yellow', content: 'Sync In Progress', textColor: 'black' },
+        section3: { bg: 'white', content: 'Lorem ipsum dolor sit amet...', textColor: 'black' },
+        section4: { bg: 'white', content: '', textColor: 'black' },
+        section5: { bg: 'green', content: 'Sync Complete<br>1300 of 1300 added', textColor: 'white' },
+        section6: { bg: 'white', content: '', textColor: 'black' },
+        section7: { bg: 'white', content: '', textColor: 'black' },
+        section8: { bg: 'light-gray', content: 'Back ↺', textColor: 'black' }
+      },
+      error: {
+        section1: { bg: 'white', content: 'Raindrop/Notion Sync', textColor: 'black' },
+        section2: { bg: 'white', content: 'Error', textColor: 'red' },
+        section3: { bg: 'yellow', content: 'Back ↺', textColor: 'black' },
+        section4: { bg: 'white', content: '', textColor: 'black' },
+        section5: { bg: 'white', content: '', textColor: 'black' },
+        section6: { bg: 'white', content: '', textColor: 'black' },
+        section7: { bg: 'white', content: '', textColor: 'black' },
+        section8: { bg: 'light-gray', content: 'Back ↺', textColor: 'black' }
+      },
+      loading: {
+        section1: { bg: 'white', content: 'Raindrop/Notion Sync', textColor: 'black' },
+        section2: { bg: 'white', content: '... Raindrop Bookmarks', textColor: 'black' },
+        section3: { bg: 'white', content: '... Notion Pages', textColor: 'black' },
+        section4: { bg: 'white', content: 'Loading...', textColor: 'black' },
+        section5: { bg: 'white', content: 'Please Wait...', textColor: 'black' },
+        section6: { bg: 'white', content: '', textColor: 'black' },
+        section7: { bg: 'white', content: '', textColor: 'black' },
+        section8: { bg: 'light-gray', content: 'Back ↺', textColor: 'black' }
+      }
+    },
+
+    // Sync test modes for 8-section layout
     syncModes: {
       smart: {
         title: 'Smart Sync',
         description: 'Smart analysis - only sync what needs to change',
         button: 'Start Smart Sync',
         showEfficiency: true,
-        infoCard: {
-          title: '🧠 Smart Sync Technology',
-          description: 'Advanced algorithm that analyzes all data and processes only necessary changes:',
-          features: [
-            'Intelligent difference detection',
-            '95%+ efficiency improvement',
-            'Preserves unchanged data',
-            'Minimal API usage'
-          ]
+        sections: {
+          section1: { bg: 'white', content: 'Raindrop/Notion Sync', textColor: 'black' },
+          section2: { bg: 'yellow', content: 'Start Smart Sync?', textColor: 'black' },
+          section3: { bg: 'white', content: '', textColor: 'black' },
+          section4: { bg: 'white', content: '', textColor: 'black' },
+          section5: { bg: 'white', content: '', textColor: 'black' },
+          section6: { bg: 'white', content: '', textColor: 'black' },
+          section7: { bg: 'white', content: '', textColor: 'black' },
+          section8: { bg: 'light-gray', content: 'Back ↺', textColor: 'black' }
         }
       },
       incremental: {
@@ -383,15 +427,15 @@ const Utils = {
         description: 'Sync only recent bookmarks (7 days)',
         button: 'Start Incremental Sync',
         showEfficiency: true,
-        infoCard: {
-          title: '⚡ Incremental Sync',
-          description: 'Fast synchronization focusing on recent activity:',
-          features: [
-            'Last 7 days of bookmarks',
-            'Modified items only',
-            'Minimal processing time',
-            'Preserves existing data'
-          ]
+        sections: {
+          section1: { bg: 'white', content: 'Raindrop/Notion Sync', textColor: 'black' },
+          section2: { bg: 'yellow', content: 'Start Incremental Sync?', textColor: 'black' },
+          section3: { bg: 'white', content: '', textColor: 'black' },
+          section4: { bg: 'white', content: '', textColor: 'black' },
+          section5: { bg: 'white', content: '', textColor: 'black' },
+          section6: { bg: 'white', content: '', textColor: 'black' },
+          section7: { bg: 'white', content: '', textColor: 'black' },
+          section8: { bg: 'light-gray', content: 'Back ↺', textColor: 'black' }
         }
       },
       reset: {
@@ -400,19 +444,20 @@ const Utils = {
         button: 'Start Reset & Full Sync',
         showEfficiency: false,
         warning: true,
-        infoCard: {
-          title: '⚠️ Reset Mode',
-          description: 'This will delete all existing Notion pages and recreate them from Raindrop. This operation cannot be undone.',
-          features: [
-            'All Notion pages will be deleted',
-            'All bookmarks will be recreated',
-            'Custom Notion data will be lost'
-          ]
+        sections: {
+          section1: { bg: 'white', content: 'Raindrop/Notion Sync', textColor: 'black' },
+          section2: { bg: 'red', content: 'Reset & Full Sync?', textColor: 'white' },
+          section3: { bg: 'white', content: '⚠️ Warning: This will delete all existing pages', textColor: 'red' },
+          section4: { bg: 'white', content: '', textColor: 'black' },
+          section5: { bg: 'white', content: '', textColor: 'black' },
+          section6: { bg: 'white', content: '', textColor: 'black' },
+          section7: { bg: 'white', content: '', textColor: 'black' },
+          section8: { bg: 'light-gray', content: 'Back ↺', textColor: 'black' }
         }
       }
     },
 
-    // Apply dashboard state
+    // Apply dashboard state using 8-section layout
     setDashboardState(stateName) {
       const state = this.dashboard[stateName];
       if (!state) {
@@ -420,50 +465,33 @@ const Utils = {
         return;
       }
 
-      // Update active button
+      console.log(`Setting dashboard state: ${stateName}`);
+
+      // Update active button in state switcher
       document.querySelectorAll('.state-switcher button').forEach(btn => {
         btn.classList.remove('active');
-        if (btn.textContent.toLowerCase().includes(stateName.replace('-', ' '))) {
+        if (btn.textContent.toLowerCase().replace(/\s+/g, '-').includes(stateName)) {
           btn.classList.add('active');
         }
       });
 
-      // Update indicator
-      const indicator = document.getElementById('statusIndicator');
-      if (indicator) {
-        indicator.className = `status-indicator ${state.indicator}`;
+      // Apply each section configuration
+      for (let i = 1; i <= 8; i++) {
+        const sectionConfig = state[`section${i}`];
+        if (sectionConfig) {
+          Utils.sections.setSectionBackground(i, sectionConfig.bg);
+          if (sectionConfig.content) {
+            Utils.sections.setSectionContent(i, sectionConfig.content, sectionConfig.textColor);
+          } else {
+            Utils.sections.clearSection(i);
+          }
+        }
       }
-
-      // Update counts
-      const raindropCount = document.getElementById('raindropCount');
-      if (raindropCount) {
-        raindropCount.textContent = state.raindropCount;
-        raindropCount.className = `count-display ${state.raindropClass}`;
-      }
-
-      const notionCount = document.getElementById('notionCount');
-      if (notionCount) {
-        notionCount.textContent = state.notionCount;
-        notionCount.className = `count-display ${state.notionClass}`;
-      }
-
-      // Update status message
-      const statusMessage = document.getElementById('statusMessage');
-      if (statusMessage) {
-        statusMessage.textContent = state.statusMessage;
-        statusMessage.className = `status-message ${state.statusClass}`;
-      }
-
-      // Update action buttons
-      const primaryAction = document.getElementById('primaryAction');
-      const secondaryAction = document.getElementById('secondaryAction');
-      if (primaryAction) primaryAction.textContent = state.primaryAction;
-      if (secondaryAction) secondaryAction.textContent = state.secondaryAction;
 
       console.log(`Dashboard state changed to: ${stateName}`);
     },
 
-    // Apply sync mode
+    // Apply sync mode using 8-section layout
     setSyncMode(modeName) {
       const mode = this.syncModes[modeName];
       if (!mode) {
@@ -471,7 +499,9 @@ const Utils = {
         return;
       }
 
-      // Update active button
+      console.log(`Setting sync mode: ${modeName}`);
+
+      // Update active button in mode switcher
       document.querySelectorAll('.mode-switcher button').forEach(btn => {
         btn.classList.remove('active');
         if (btn.textContent.toLowerCase().includes(modeName)) {
@@ -479,7 +509,22 @@ const Utils = {
         }
       });
 
-      // Update page content
+      // Apply section configurations
+      if (mode.sections) {
+        for (let i = 1; i <= 8; i++) {
+          const sectionConfig = mode.sections[`section${i}`];
+          if (sectionConfig) {
+            Utils.sections.setSectionBackground(i, sectionConfig.bg);
+            if (sectionConfig.content) {
+              Utils.sections.setSectionContent(i, sectionConfig.content, sectionConfig.textColor);
+            } else {
+              Utils.sections.clearSection(i);
+            }
+          }
+        }
+      }
+
+      // Update specific elements if they exist
       const syncTitle = document.getElementById('sync-title');
       const syncDescription = document.getElementById('sync-description');
       const syncBtn = document.getElementById('syncBtn');
@@ -487,38 +532,6 @@ const Utils = {
       if (syncTitle) syncTitle.textContent = mode.title;
       if (syncDescription) syncDescription.textContent = mode.description;
       if (syncBtn) syncBtn.textContent = mode.button;
-
-      // Show/hide efficiency display
-      const efficiencyDisplay = document.getElementById('efficiency-display');
-      if (efficiencyDisplay) {
-        efficiencyDisplay.style.display = mode.showEfficiency ? 'block' : 'none';
-      }
-
-      // Update info card
-      const infoCard = document.getElementById('info-card-1');
-      if (infoCard) {
-        if (mode.warning) {
-          infoCard.classList.add('warning');
-        } else {
-          infoCard.classList.remove('warning');
-        }
-
-        const infoTitle = infoCard.querySelector('h3');
-        const infoDescription = infoCard.querySelector('p');
-        const infoList = infoCard.querySelector('ul');
-
-        if (infoTitle) infoTitle.textContent = mode.infoCard.title;
-        if (infoDescription) infoDescription.textContent = mode.infoCard.description;
-
-        if (infoList) {
-          infoList.innerHTML = '';
-          mode.infoCard.features.forEach(feature => {
-            const li = document.createElement('li');
-            li.textContent = feature;
-            infoList.appendChild(li);
-          });
-        }
-      }
 
       console.log(`Sync mode changed to: ${modeName}`);
     }

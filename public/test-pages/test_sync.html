@@ -21,35 +21,49 @@
     <button onclick="resetPage()">Reset Page</button>
   </div>
 
-  <div class="container">
-    <main class="sync-page" id="main-content" role="main">
-      <header class="sync-header">
-        <a href="#" class="back-button">← Back to Dashboard</a>
-        
-        <h1 class="text-huge sync-title" id="sync-title">
-          Smart Sync
-        </h1>
-        
-        <p class="text-medium sync-description" id="sync-description">
-          Smart analysis - only sync what needs to change
-        </p>
-      </header>
-
-      <section class="sync-interface">
-        <div class="sync-controls">
-          <button id="syncBtn" class="action-button primary sync-button" type="button">
-            Start Smart Sync
-          </button>
-        </div>
-
-        <div class="sync-progress" id="progress-section">
-          <div class="progress-bar">
-            <div class="progress-fill" id="progress-fill"></div>
-          </div>
-          <div class="progress-text" id="progress-text">Preparing sync...</div>
-        </div>
-
-        <div class="sync-stats" id="sync-stats">
+  <main class="dashboard-8-section" id="main-content" role="main">
+    <!-- Section 1: Title -->
+    <div class="dashboard-section section-1 bg-white">
+      <div class="section-content">
+        <h1 class="text-huge sync-title" id="sync-title">Raindrop/Notion Sync</h1>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 2: Action Button -->
+    <div class="dashboard-section section-2 bg-yellow" id="action-section">
+      <div class="section-content">
+        <button id="syncBtn" class="section-action-button text-huge text-black" type="button">
+          Start Smart Sync
+        </button>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 3: Status/Progress -->
+    <div class="dashboard-section section-3 bg-white" id="status-progress-section">
+      <div class="section-content">
+        <div id="progress-text" class="text-large">Ready to sync...</div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 4: Additional Info -->
+    <div class="dashboard-section section-4 bg-white" id="info-section">
+      <div class="section-content">
+        <div class="text-medium" id="sync-description">Smart analysis - only sync what needs to change</div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 5: Stats/Efficiency -->
+    <div class="dashboard-section section-5 bg-white" id="stats-section">
+      <div class="section-content">
+        <div class="sync-stats" id="sync-stats" style="display: none;">
           <div class="stat-group">
             <div class="stat-item">
               <span class="stat-number" id="added-count">0</span>
@@ -68,55 +82,112 @@
               <span class="stat-label">Skipped</span>
             </div>
           </div>
-          
-          <div class="efficiency-display" id="efficiency-display">
-            <span class="efficiency-number" id="efficiency-percentage">97%</span>
-            <span class="efficiency-label">Efficiency</span>
-            <div class="efficiency-status" id="efficiency-status">
-              🚀 Excellent efficiency!
-            </div>
-          </div>
         </div>
-
-        <div class="sync-status">
-          <div 
-            id="status" 
-            class="status-display" 
-            role="log" 
-            aria-live="polite" 
-            aria-label="Sync progress updates"
-          ></div>
-        </div>
-      </section>
-
-      <aside class="sync-info">
-        <div class="info-card" id="info-card-1">
-          <h3>🧠 Smart Sync Technology</h3>
-          <p>Advanced algorithm that analyzes all data and processes only necessary changes:</p>
-          <ul>
-            <li>Intelligent difference detection</li>
-            <li>95%+ efficiency improvement</li>
-            <li>Preserves unchanged data</li>
-            <li>Minimal API usage</li>
-          </ul>
-        </div>
-        
-        <div class="info-card">
-          <h3>📊 Live Updates</h3>
-          <p>Real-time progress tracking with detailed insights:</p>
-          <ul>
-            <li>Live progress streaming</li>
-            <li>Operation counts</li>
-            <li>Efficiency metrics</li>
-            <li>Error reporting</li>
-          </ul>
-        </div>
-      </aside>
-    </main>
-  </div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 6: Completion/Results -->
+    <div class="dashboard-section section-6 bg-white" id="completion-section">
+      <div class="section-content">
+        <div id="completion-message" class="text-large" style="display: none;"></div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 7: Log Area -->
+    <div class="dashboard-section section-7 bg-white log-section" id="log-section">
+      <div class="section-content">
+        <div 
+          id="status" 
+          class="status-display" 
+          role="log" 
+          aria-live="polite" 
+          aria-label="Sync progress updates"
+          style="display: none;"
+        ></div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 8: Back Button -->
+    <div class="dashboard-section section-8 bg-light-gray back-section">
+      <div class="section-content">
+        <a href="#" class="back-button text-large">Back ↺</a>
+      </div>
+    </div>
+  </main>
 
   <script src="../scripts/utils.js"></script>
   <script src="../scripts/sync.js"></script>
   <script src="../scripts/enhancements.js"></script>
+  
+  <script>
+    // Enhanced test functions for sync page
+    function testSync() {
+      // Simulate sync process
+      const actionSection = document.getElementById('action-section');
+      const statusSection = document.getElementById('status-progress-section');
+      const logSection = document.getElementById('log-section');
+      const completionSection = document.getElementById('completion-section');
+      const statsSection = document.getElementById('stats-section');
+      const statusDisplay = document.getElementById('status');
+      const progressText = document.getElementById('progress-text');
+      const completionMessage = document.getElementById('completion-message');
+      const syncStats = document.getElementById('sync-stats');
+      
+      // Start sync
+      actionSection.classList.remove('bg-yellow');
+      actionSection.classList.add('bg-yellow');
+      progressText.textContent = 'Sync in progress...';
+      statusDisplay.style.display = 'block';
+      logSection.style.display = 'block';
+      
+      // Add some test log messages
+      setTimeout(() => {
+        addTestMessage('🔗 Connected to sync stream', 'info');
+        addTestMessage('📊 Loading data from both systems...', 'info');
+      }, 500);
+      
+      setTimeout(() => {
+        addTestMessage('✅ Loaded 1365 raindrops and 65 Notion pages', 'success');
+        addTestMessage('🔍 Smart Diff analysis...', 'analysis');
+        syncStats.style.display = 'block';
+        updateTestStats(150, 50, 0, 1165);
+      }, 1500);
+      
+      setTimeout(() => {
+        actionSection.classList.remove('bg-yellow');
+        actionSection.classList.add('bg-white');
+        completionSection.classList.add('bg-green');
+        completionMessage.textContent = 'Sync Complete - 1300 of 1300 added';
+        completionMessage.style.display = 'block';
+        addTestMessage('🎉 Sync completed successfully!', 'complete');
+      }, 3000);
+    }
+    
+    function addTestMessage(message, type) {
+      const statusDisplay = document.getElementById('status');
+      const messageElement = document.createElement('div');
+      messageElement.className = `sync-update ${type}`;
+      messageElement.textContent = message;
+      statusDisplay.appendChild(messageElement);
+      statusDisplay.scrollTop = statusDisplay.scrollHeight;
+    }
+    
+    function updateTestStats(added, updated, deleted, skipped) {
+      document.getElementById('added-count').textContent = added;
+      document.getElementById('updated-count').textContent = updated;
+      document.getElementById('deleted-count').textContent = deleted;
+      document.getElementById('skipped-count').textContent = skipped;
+    }
+    
+    function resetPage() {
+      location.reload();
+    }
+  </script>
 </body>
 </html>
