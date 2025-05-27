@@ -293,9 +293,234 @@ const Utils = {
     },
 
     debug(...args) {
-      if (this.getParam('debug') === 'true') {
+      if (Utils.getParam('debug') === 'true') {
         console.log(`[${new Date().toISOString()}] DEBUG:`, ...args);
       }
+    }
+  },
+
+  // Test state management for test pages
+  testStates: {
+    // Dashboard test states
+    dashboard: {
+      synced: {
+        indicator: 'synced',
+        raindropCount: '1365 Raindrop Bookmarks',
+        raindropClass: 'synced',
+        notionCount: '1365 Notion Pages',
+        notionClass: 'synced',
+        statusMessage: 'All bookmarks are synchronized',
+        statusClass: 'synced',
+        primaryAction: 'Sync New? ↻',
+        secondaryAction: 'Reset / FullSync'
+      },
+      'not-synced': {
+        indicator: 'not-synced',
+        raindropCount: '1365 Raindrop Bookmarks',
+        raindropClass: 'not-synced',
+        notionCount: '65 Notion Pages',
+        notionClass: 'not-synced',
+        statusMessage: '1300 bookmarks need synchronization',
+        statusClass: 'not-synced',
+        primaryAction: 'Sync New? ↻',
+        secondaryAction: 'Reset / FullSync'
+      },
+      processing: {
+        indicator: 'processing',
+        raindropCount: '1365 Raindrop Bookmarks',
+        raindropClass: 'neutral',
+        notionCount: '... Notion Pages',
+        notionClass: 'neutral loading',
+        statusMessage: 'Sync in progress...',
+        statusClass: 'processing',
+        primaryAction: 'Stop!',
+        secondaryAction: 'Please Wait...'
+      },
+      error: {
+        indicator: 'not-synced',
+        raindropCount: 'Error loading counts',
+        raindropClass: 'not-synced error',
+        notionCount: 'Error loading counts',
+        notionClass: 'not-synced error',
+        statusMessage: 'Failed to load sync status',
+        statusClass: 'not-synced',
+        primaryAction: 'Retry ↻',
+        secondaryAction: 'Back ↤'
+      },
+      loading: {
+        indicator: 'processing',
+        raindropCount: '... Raindrop Bookmarks',
+        raindropClass: 'neutral loading',
+        notionCount: '... Notion Pages',
+        notionClass: 'neutral loading',
+        statusMessage: 'Loading...',
+        statusClass: 'processing',
+        primaryAction: 'Please Wait...',
+        secondaryAction: 'Cancel'
+      }
+    },
+
+    // Sync test modes
+    syncModes: {
+      smart: {
+        title: 'Smart Sync',
+        description: 'Smart analysis - only sync what needs to change',
+        button: 'Start Smart Sync',
+        showEfficiency: true,
+        infoCard: {
+          title: '🧠 Smart Sync Technology',
+          description: 'Advanced algorithm that analyzes all data and processes only necessary changes:',
+          features: [
+            'Intelligent difference detection',
+            '95%+ efficiency improvement',
+            'Preserves unchanged data',
+            'Minimal API usage'
+          ]
+        }
+      },
+      incremental: {
+        title: 'Incremental Sync',
+        description: 'Sync only recent bookmarks (7 days)',
+        button: 'Start Incremental Sync',
+        showEfficiency: true,
+        infoCard: {
+          title: '⚡ Incremental Sync',
+          description: 'Fast synchronization focusing on recent activity:',
+          features: [
+            'Last 7 days of bookmarks',
+            'Modified items only',
+            'Minimal processing time',
+            'Preserves existing data'
+          ]
+        }
+      },
+      reset: {
+        title: 'Reset & Full Sync',
+        description: 'Delete all Notion pages and recreate from Raindrop',
+        button: 'Start Reset & Full Sync',
+        showEfficiency: false,
+        warning: true,
+        infoCard: {
+          title: '⚠️ Reset Mode',
+          description: 'This will delete all existing Notion pages and recreate them from Raindrop. This operation cannot be undone.',
+          features: [
+            'All Notion pages will be deleted',
+            'All bookmarks will be recreated',
+            'Custom Notion data will be lost'
+          ]
+        }
+      }
+    },
+
+    // Apply dashboard state
+    setDashboardState(stateName) {
+      const state = this.dashboard[stateName];
+      if (!state) {
+        console.warn('Unknown dashboard state:', stateName);
+        return;
+      }
+
+      // Update active button
+      document.querySelectorAll('.state-switcher button').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.toLowerCase().includes(stateName.replace('-', ' '))) {
+          btn.classList.add('active');
+        }
+      });
+
+      // Update indicator
+      const indicator = document.getElementById('statusIndicator');
+      if (indicator) {
+        indicator.className = `status-indicator ${state.indicator}`;
+      }
+
+      // Update counts
+      const raindropCount = document.getElementById('raindropCount');
+      if (raindropCount) {
+        raindropCount.textContent = state.raindropCount;
+        raindropCount.className = `count-display ${state.raindropClass}`;
+      }
+
+      const notionCount = document.getElementById('notionCount');
+      if (notionCount) {
+        notionCount.textContent = state.notionCount;
+        notionCount.className = `count-display ${state.notionClass}`;
+      }
+
+      // Update status message
+      const statusMessage = document.getElementById('statusMessage');
+      if (statusMessage) {
+        statusMessage.textContent = state.statusMessage;
+        statusMessage.className = `status-message ${state.statusClass}`;
+      }
+
+      // Update action buttons
+      const primaryAction = document.getElementById('primaryAction');
+      const secondaryAction = document.getElementById('secondaryAction');
+      if (primaryAction) primaryAction.textContent = state.primaryAction;
+      if (secondaryAction) secondaryAction.textContent = state.secondaryAction;
+
+      console.log(`Dashboard state changed to: ${stateName}`);
+    },
+
+    // Apply sync mode
+    setSyncMode(modeName) {
+      const mode = this.syncModes[modeName];
+      if (!mode) {
+        console.warn('Unknown sync mode:', modeName);
+        return;
+      }
+
+      // Update active button
+      document.querySelectorAll('.mode-switcher button').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.toLowerCase().includes(modeName)) {
+          btn.classList.add('active');
+        }
+      });
+
+      // Update page content
+      const syncTitle = document.getElementById('sync-title');
+      const syncDescription = document.getElementById('sync-description');
+      const syncBtn = document.getElementById('syncBtn');
+
+      if (syncTitle) syncTitle.textContent = mode.title;
+      if (syncDescription) syncDescription.textContent = mode.description;
+      if (syncBtn) syncBtn.textContent = mode.button;
+
+      // Show/hide efficiency display
+      const efficiencyDisplay = document.getElementById('efficiency-display');
+      if (efficiencyDisplay) {
+        efficiencyDisplay.style.display = mode.showEfficiency ? 'block' : 'none';
+      }
+
+      // Update info card
+      const infoCard = document.getElementById('info-card-1');
+      if (infoCard) {
+        if (mode.warning) {
+          infoCard.classList.add('warning');
+        } else {
+          infoCard.classList.remove('warning');
+        }
+
+        const infoTitle = infoCard.querySelector('h3');
+        const infoDescription = infoCard.querySelector('p');
+        const infoList = infoCard.querySelector('ul');
+
+        if (infoTitle) infoTitle.textContent = mode.infoCard.title;
+        if (infoDescription) infoDescription.textContent = mode.infoCard.description;
+
+        if (infoList) {
+          infoList.innerHTML = '';
+          mode.infoCard.features.forEach(feature => {
+            const li = document.createElement('li');
+            li.textContent = feature;
+            infoList.appendChild(li);
+          });
+        }
+      }
+
+      console.log(`Sync mode changed to: ${modeName}`);
     }
   }
 };
@@ -303,6 +528,25 @@ const Utils = {
 // Make Utils globally available
 if (typeof window !== 'undefined') {
   window.Utils = Utils;
+  
+  // Auto-setup test state management on test pages
+  Utils.ready(() => {
+    // Setup dashboard test page
+    if (document.querySelector('.state-switcher')) {
+      window.setState = (stateName) => {
+        Utils.testStates.setDashboardState(stateName);
+      };
+      Utils.log.info('Dashboard test state management initialized');
+    }
+
+    // Setup sync test page
+    if (document.querySelector('.mode-switcher')) {
+      window.setMode = (modeName) => {
+        Utils.testStates.setSyncMode(modeName);
+      };
+      Utils.log.info('Sync test mode management initialized');
+    }
+  });
 }
 
 // Export for potential module usage
