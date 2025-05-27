@@ -5,16 +5,9 @@
     { "src": "public/**", "use": "@vercel/static" }
   ],
   "routes": [
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/api/index.js"
-    }
+    { "src": "/api/(.*)", "dest": "/api/index.js" },
+    { "src": "/sync(.*)", "dest": "/api/index.js" },
+    { "src": "/", "dest": "/api/index.js" },
+    { "src": "/public/(.*)", "dest": "/public/$1" }
   ]
 }
