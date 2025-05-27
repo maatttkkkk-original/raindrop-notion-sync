@@ -15,15 +15,8 @@
   align-items: center;
   justify-content: center;
   margin: 0 8px 0 0;
-  font-weight: 600;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-}
-.section-action-button:hover:not(:disabled) {
-  background: #14a025;
-}
-.section-action-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  font-weight: 500;
+
 }
 
 /* Back Button */
@@ -70,28 +63,3 @@
   word-break: break-word;
 }
 
-/* Typography Utilities */
-.text-huge {
-  font-size: var(--font-size-huge, 72px);
-  font-weight: 800;
-  letter-spacing: var(--letter-spacing-tight, -0.05em);
-  line-height: var(--line-height-tight, 1.1);
-}
-.text-large {
-  font-size: var(--font-size-large, 48px);
-  font-weight: 700;
-}
-.text-green {
-  color: var(--color-synced-bg, #17d827);
-}
-.text-black {
-  color: #111;
-}
-.text-white {
-  color: #fff;
-}
-
-/* Utility: log-section for Section 7 */
-.log-section {
-  min-height: 60px;
-}
