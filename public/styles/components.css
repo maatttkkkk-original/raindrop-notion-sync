@@ -73,7 +73,7 @@
 /* Typography Utilities */
 .text-huge {
   font-size: var(--font-size-huge, 72px);
-  font-weight: 500;
+  font-weight: 800;
   letter-spacing: var(--letter-spacing-tight, -0.05em);
   line-height: var(--line-height-tight, 1.1);
 }
