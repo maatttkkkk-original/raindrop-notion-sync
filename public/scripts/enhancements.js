@@ -253,57 +253,22 @@ class ProgressiveEnhancements {
 
   // ===== DYNAMIC THEMING ENHANCEMENTS =====
   setupDynamicTheming() {
-    // Respect user preferences
-    if (Utils.device.prefersDarkMode()) {
-      document.documentElement.style.setProperty('--color-scheme', 'dark');
+    // Add safety check
+    if (!window.matchMedia) {
+      console.warn('Media queries not supported - skipping dynamic theming');
+      return;
     }
-    
-    // Add theme toggle if element exists
-    const themeToggle = document.querySelector('[data-theme-toggle]');
-    if (themeToggle) {
-      themeToggle.addEventListener('click', () => {
-        this.toggleTheme();
+
+    try {
+      const darkModePreference = window.matchMedia('(prefers-color-scheme: dark)');
+      const theme = darkModePreference.matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+
+      darkModePreference.addEventListener('change', (e) => {
+        document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
       });
-    }
-    
-    // Dynamic color adjustments based on sync state
-    Utils.events.on('syncCompleted', (event) => {
-      this.updateThemeForSyncState('synced');
-    });
-    
-    Utils.events.on('syncError', (event) => {
-      this.updateThemeForSyncState('error');
-    });
-    
-    Utils.log.info('Dynamic theming enabled');
-  }
-
-  toggleTheme() {
-    const currentScheme = getComputedStyle(document.documentElement)
-      .getPropertyValue('--color-scheme').trim();
-    
-    const newScheme = currentScheme === 'dark' ? 'light' : 'dark';
-    document.documentElement.style.setProperty('--color-scheme', newScheme);
-    
-    // Store preference
-    Utils.storage.set('theme-preference', newScheme);
-  }
-
-  updateThemeForSyncState(state) {
-    const indicator = document.getElementById('indicator');
-    if (!indicator) return;
-
-    // Temporarily adjust colors for feedback
-    if (state === 'synced') {
-      indicator.style.setProperty('--indicator-color', '#22c55e');
-      setTimeout(() => {
-        indicator.style.removeProperty('--indicator-color');
-      }, 2000);
-    } else if (state === 'error') {
-      indicator.style.setProperty('--indicator-color', '#ef4444');
-      setTimeout(() => {
-        indicator.style.removeProperty('--indicator-color');
-      }, 5000);
+    } catch (error) {
+      console.warn('Error setting up dynamic theming:', error);
     }
   }
 
@@ -654,52 +619,35 @@ class ProgressiveEnhancements {
 class EnhancedStatusDisplay {
   constructor(container) {
     this.container = container;
-    this.maxMessages = 50; // Reduced for performance
-    this.messageCount = 0;
-    this.init();
-  }
-
-  init() {
-    if (!this.container) return;
+    this.messages = [];
+    this.maxMessages = 100;
     
-    // Add container enhancements
-    this.container.setAttribute('role', 'log');
-    this.container.setAttribute('aria-live', 'polite');
-    this.container.setAttribute('aria-label', 'Sync progress updates');
-    
-    // Add scroll detection
-    this.container.addEventListener('scroll', Utils.throttle(() => {
-      this.onScroll();
-    }, 100));
+    // Add safety check for motion preferences
+    this.reducedMotion = window.matchMedia ? 
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches : 
+      false;
   }
 
   addMessage(message, type = 'info') {
-    const messageElement = document.createElement('div');
-    messageElement.className = `sync-update ${type}`;
-    messageElement.textContent = message;
-    messageElement.setAttribute('data-message-id', ++this.messageCount);
-    
-    // Enhanced styling
-    this.applyEnhancedStyling(messageElement, type);
-    
-    // Add timestamp
-    const timestamp = document.createElement('span');
-    timestamp.className = 'sync-timestamp';
-    timestamp.textContent = new Date().toLocaleTimeString();
-    timestamp.style.cssText = 'opacity: 0.6; font-size: 0.8em; float: right;';
-    messageElement.appendChild(timestamp);
-    
-    // Add to container
-    this.container.appendChild(messageElement);
-    
-    // Animate in
-    this.animateMessageIn(messageElement);
-    
-    // Manage message count
-    this.limitMessages();
-    
-    // Auto-scroll
-    this.scrollToBottom();
+    try {
+      const element = document.createElement('div');
+      element.className = 'message';
+      element.textContent = message;
+      
+      this.applyEnhancedStyling(element, type);
+      
+      // Only animate if motion is not reduced
+      if (!this.reducedMotion) {
+        this.animateMessageIn(element);
+      }
+      
+      this.container.appendChild(element);
+      this.messages.push(element);
+      this.limitMessages();
+      this.scrollToBottom();
+    } catch (error) {
+      console.warn('Error adding status message:', error);
+    }
   }
 
   applyEnhancedStyling(element, type) {
@@ -783,50 +731,6 @@ class EnhancedStatusDisplay {
       });
     } else {
       this.container.scrollTop = this.container.scrollHeight;
-    }
-  }
-
-  onScroll() {
-    // Show scroll indicator if not at bottom
-    const isAtBottom = this.container.scrollTop + this.container.clientHeight >= 
-                      this.container.scrollHeight - 5;
-    
-    if (!isAtBottom && !this.scrollIndicator) {
-      this.showScrollIndicator();
-    } else if (isAtBottom && this.scrollIndicator) {
-      this.hideScrollIndicator();
-    }
-  }
-
-  showScrollIndicator() {
-    this.scrollIndicator = document.createElement('div');
-    this.scrollIndicator.textContent = '↓ New messages below';
-    this.scrollIndicator.style.cssText = `
-      position: absolute;
-      bottom: 10px;
-      right: 10px;
-      background: #3b82f6;
-      color: white;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      cursor: pointer;
-      z-index: 10;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    `;
-    
-    this.scrollIndicator.addEventListener('click', () => {
-      this.scrollToBottom();
-    });
-    
-    this.container.style.position = 'relative';
-    this.container.appendChild(this.scrollIndicator);
-  }
-
-  hideScrollIndicator() {
-    if (this.scrollIndicator) {
-      this.container.removeChild(this.scrollIndicator);
-      this.scrollIndicator = null;
     }
   }
 }
