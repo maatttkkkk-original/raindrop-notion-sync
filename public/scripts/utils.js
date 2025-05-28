@@ -580,3 +580,90 @@ Utils.perf = {
   measure: () => 0,
   getMemoryUsage: () => ({ used: 0, total: 0, limit: 0 })
 };
+
+// Just ADD these missing functions to the END of your existing utils.js file
+// Don't replace anything - just add these at the bottom:
+
+// Add missing device functions
+Utils.device = {
+  prefersReducedMotion() {
+    try {
+      return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  prefersDarkMode() {
+    try {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  prefersHighContrast() {
+    try {
+      return window.matchMedia('(prefers-contrast: high)').matches;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  hasTouch() {
+    try {
+      return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  getConnection() {
+    try {
+      return navigator.connection || navigator.mozConnection || navigator.webkitConnection || null;
+    } catch (e) {
+      return null;
+    }
+  }
+};
+
+// Add missing performance functions
+Utils.perf = {
+  mark(name) {
+    try {
+      if (performance && performance.mark) {
+        performance.mark(name);
+      }
+    } catch (e) {
+      // Silently fail
+    }
+  },
+
+  measure(name, start, end) {
+    try {
+      if (performance && performance.measure) {
+        performance.measure(name, start, end);
+        const measure = performance.getEntriesByName(name)[0];
+        return measure ? measure.duration : 0;
+      }
+    } catch (e) {
+      // Silently fail
+    }
+    return 0;
+  },
+
+  getMemoryUsage() {
+    try {
+      if (performance && performance.memory) {
+        return {
+          used: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024),
+          total: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024),
+          limit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024)
+        };
+      }
+    } catch (e) {
+      // Silently fail
+    }
+    return { used: 0, total: 0, limit: 0 };
+  }
+};
