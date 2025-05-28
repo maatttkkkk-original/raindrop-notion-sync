@@ -566,3 +566,17 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = Utils;
 }
+
+Utils.device = {
+  prefersReducedMotion: () => false,
+  prefersDarkMode: () => false, 
+  prefersHighContrast: () => false,
+  hasTouch: () => false,
+  getConnection: () => null
+};
+
+Utils.perf = {
+  mark: () => {},
+  measure: () => 0,
+  getMemoryUsage: () => ({ used: 0, total: 0, limit: 0 })
+};
