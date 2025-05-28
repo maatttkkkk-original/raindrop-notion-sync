@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Raindrop/Notion Sync</title>
   
-  <link rel="stylesheet" href="/public/styles/design-system.css?v=2024-05-27-003">
-  <link rel="stylesheet" href="/public/styles/dashboard.css?v=2024-05-27-003">
-    <link rel="stylesheet" href="/public/styles/components.css?v=2024-05-27-003">
+  <link rel="stylesheet" href="/public/styles/design-system.css?v=2024-05-28-001">
+  <link rel="stylesheet" href="/public/styles/components.css?v=2024-05-28-001">
+  <link rel="stylesheet" href="/public/styles/dashboard.css?v=2024-05-28-001">
 </head>
 <body>
   <main class="dashboard-8-section" id="main-content" role="main">
@@ -20,22 +20,26 @@
     
     <div class="dashboard-divider"></div>
     
-    <!-- Section 2: First Count -->
+    <!-- Section 2: Raindrop Count -->
     <div class="dashboard-section section-2 bg-white" id="raindrop-section">
       <div class="section-content">
-        <div class="count-display" id="raindropCount">
-          <span class="text-huge text-green" id="raindrop">{{raindropCount}} Raindrop Bookmarks</span>
+        <div class="count-display {{#if isSynced}}synced{{else}}not-synced{{/if}}" id="raindropCount">
+          <span class="text-huge {{#if isSynced}}text-green{{else}}text-red{{/if}}" id="raindrop">
+            {{raindropTotal}} Raindrop Bookmarks
+          </span>
         </div>
       </div>
     </div>
     
     <div class="dashboard-divider"></div>
     
-    <!-- Section 3: Second Count -->
+    <!-- Section 3: Notion Count -->
     <div class="dashboard-section section-3 bg-white" id="notion-section">
       <div class="section-content">
-        <div class="count-display" id="notionCount">
-          <span class="text-huge text-green" id="notion">{{notionCount}} Notion Pages</span>
+        <div class="count-display {{#if isSynced}}synced{{else}}not-synced{{/if}}" id="notionCount">
+          <span class="text-huge {{#if isSynced}}text-green{{else}}text-red{{/if}}" id="notion">
+            {{notionTotal}} Notion Pages
+          </span>
         </div>
       </div>
     </div>
@@ -43,10 +47,16 @@
     <div class="dashboard-divider"></div>
     
     <!-- Section 4: Status Message -->
-    <div class="dashboard-section section-4 bg-green" id="status-section">
+    <div class="dashboard-section section-4 {{#if isSynced}}bg-green{{else}}bg-red{{/if}}" id="status-section">
       <div class="section-content">
         <div class="status-message" id="statusMessage">
-          <span class="text-huge text-white" id="status">Synced</span>
+          <span class="text-huge text-white" id="status">
+            {{#if isSynced}}
+              Synced
+            {{else}}
+              {{diff}} Not Synced
+            {{/if}}
+          </span>
         </div>
       </div>
     </div>
@@ -84,10 +94,10 @@
     
     <div class="dashboard-divider"></div>
     
-    <!-- Section 7: Additional Content/Log Area -->
+    <!-- Section 7: Log Area -->
     <div class="dashboard-section section-7 bg-white log-section" id="log-section">
       <div class="section-content">
-        <div id="status" class="status-display" role="log" aria-live="polite"></div>
+        <div id="status" class="status-display" role="log" aria-live="polite" style="display: none;"></div>
       </div>
     </div>
     
@@ -99,6 +109,15 @@
         <a href="/" class="back-button text-large">Back ↺</a>
       </div>
     </div>
+    
+    <!-- Hidden Status Indicator for JS compatibility -->
+    <div 
+      id="indicator"
+      class="status-indicator {{#if isSynced}}synced{{else}}not-synced{{/if}}" 
+      role="img" 
+      aria-label="{{#if isSynced}}Synced{{else}}Not synced{{/if}} status indicator"
+      style="display: none;"
+    ></div>
   </main>
 
   <script src="/public/scripts/utils.js"></script>

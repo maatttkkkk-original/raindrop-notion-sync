@@ -32,15 +32,29 @@ fastify.get('/', async (req, reply) => {
     const raindropTotal = await getRaindropTotal(password);
     const notionTotal = await getTotalNotionPages(password);
 
+    // Calculate sync status
+    const diff = Math.abs(raindropTotal - notionTotal);
+    const isSynced = diff <= 5;
+
     reply.view('index', {
       password,
       raindropTotal,
       notionTotal,
-      diff: Math.abs(raindropTotal - notionTotal)
+      raindropCount: raindropTotal,
+      notionCount: notionTotal,
+      diff,
+      isSynced,
+      syncStatus: isSynced ? 'Synced' : `${diff} bookmarks need sync`,
+      statusClass: isSynced ? 'synced' : 'not-synced'
     });
   } catch (error) {
     req.log.error(error);
-    reply.view('error', { error: error.message });
+    reply.view('error', { 
+      error: error.message,
+      password,
+      code: 'FETCH_ERROR',
+      details: 'Failed to load dashboard data'
+    });
   }
 });
 
@@ -53,6 +67,7 @@ fastify.get('/sync', async (req, reply) => {
   try {
     reply.view('sync', {
       password,
+      mode,
       syncMode: mode,
       daysBack,
       deleteOrphaned,
@@ -61,12 +76,17 @@ fastify.get('/sync', async (req, reply) => {
         mode === 'reset'
           ? 'Delete all Notion pages and recreate from Raindrop'
           : mode === 'incremental'
-          ? 'Sync only recent bookmarks'
+          ? `Sync only recent bookmarks (${daysBack} days)`
           : 'Smart analysis — only sync what needs to change'
     });
   } catch (error) {
     req.log.error(error);
-    reply.view('error', { error: error.message });
+    reply.view('error', { 
+      error: error.message,
+      password,
+      code: 'SYNC_PAGE_ERROR',
+      details: 'Failed to load sync page'
+    });
   }
 });
 
@@ -79,14 +99,22 @@ fastify.get('/api/counts', async (req, reply) => {
       getTotalNotionPages(password)
     ]);
 
+    const diff = Math.abs(raindropTotal - notionTotal);
+    const isSynced = diff <= 5;
+
     reply.send({
       raindropTotal,
       notionTotal,
-      isSynced: Math.abs(raindropTotal - notionTotal) <= 5,
+      isSynced,
+      diff,
+      syncStatus: isSynced ? 'Synced' : `${diff} bookmarks need sync`,
       success: true
     });
   } catch (error) {
-    reply.status(500).send({ error: error.message });
+    reply.status(500).send({ 
+      error: error.message,
+      success: false 
+    });
   }
 });
 
@@ -99,7 +127,9 @@ fastify.get('/sync-stream', async (req, reply) => {
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
-    Connection: 'keep-alive'
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control'
   });
 
   const send = (data) => {
@@ -113,48 +143,99 @@ fastify.get('/sync-stream', async (req, reply) => {
   try {
     send({ message: '🚀 Starting sync...', type: 'info' });
 
-    const raindrops = mode === 'incremental'
-      ? await getRecentRaindrops(password, daysBack)
-      : await getAllRaindrops(password);
-    const notionPages = await getNotionPages(password);
+    let raindrops;
+    if (mode === 'incremental') {
+      const hours = daysBack * 24;
+      raindrops = await getRecentRaindrops(hours);
+      send({ message: `📅 Loaded ${raindrops.length} recent bookmarks (${daysBack} days)`, type: 'info' });
+    } else {
+      raindrops = await getAllRaindrops();
+      send({ message: `📚 Loaded ${raindrops.length} total bookmarks`, type: 'info' });
+    }
 
-    const notionMap = new Map(notionPages.map(page => [page.url, page]));
+    const notionPages = await getNotionPages();
+    send({ message: `📋 Loaded ${notionPages.length} Notion pages`, type: 'info' });
+
+    const notionMap = new Map(notionPages.map(page => [page.properties?.URL?.url, page]));
 
     let added = 0, updated = 0, deleted = 0, skipped = 0, failed = 0;
+    const total = raindrops.length + (deleteOrphaned ? notionPages.length : 0);
+    let processed = 0;
 
+    // Process raindrops
     for (const drop of raindrops) {
-      const notionPage = notionMap.get(drop.url);
+      const notionPage = notionMap.get(drop.link);
       try {
         if (!notionPage) {
-          await createNotionPage(drop, password);
-          send({ message: `➕ Added: ${drop.title}`, type: 'added' });
-          added++;
+          const result = await createNotionPage(drop);
+          if (result.success) {
+            send({ message: `➕ Added: ${drop.title}`, type: 'added' });
+            added++;
+          } else {
+            send({ message: `❌ Failed to add: ${drop.title}`, type: 'failed' });
+            failed++;
+          }
         } else {
-          await updateNotionPage(drop, notionPage, password);
+          await updateNotionPage(notionPage.id, drop);
           send({ message: `🔄 Updated: ${drop.title}`, type: 'updated' });
           updated++;
         }
       } catch (err) {
         failed++;
-        send({ message: `❌ Failed on: ${drop.title}`, type: 'failed' });
+        send({ message: `❌ Failed on: ${drop.title} - ${err.message}`, type: 'failed' });
+      }
+
+      processed++;
+      const progress = Math.round((processed / total) * 100);
+      send({ 
+        progress, 
+        counts: { added, updated, deleted, skipped, failed },
+        message: `Progress: ${processed}/${total} (${progress}%)`,
+        type: 'info'
+      });
+    }
+
+    // Handle orphaned pages if requested
+    if (deleteOrphaned) {
+      send({ message: '🗑️ Checking for orphaned pages...', type: 'info' });
+      
+      for (const page of notionPages) {
+        const pageUrl = page.properties?.URL?.url;
+        if (pageUrl && !raindrops.some(drop => drop.link === pageUrl)) {
+          try {
+            await deleteNotionPage(page.id);
+            send({ message: `🗑️ Deleted orphan: ${page.properties?.Name?.title?.[0]?.text?.content || 'Untitled'}`, type: 'deleted' });
+            deleted++;
+          } catch (err) {
+            send({ message: `❌ Failed to delete: ${page.properties?.Name?.title?.[0]?.text?.content || 'Untitled'}`, type: 'failed' });
+            failed++;
+          }
+        }
+        
+        processed++;
+        const progress = Math.round((processed / total) * 100);
+        send({ 
+          progress, 
+          counts: { added, updated, deleted, skipped, failed },
+          type: 'info'
+        });
       }
     }
 
-    if (deleteOrphaned) {
-      for (const page of notionPages) {
-        if (!raindrops.some(drop => drop.url === page.url)) {
-          await deleteNotionPage(page, password);
-          send({ message: `🗑️ Deleted orphan: ${page.title}`, type: 'deleted' });
-          deleted++;
-        }
-      }
-    }
+    // Calculate efficiency
+    const totalOperations = added + updated + deleted;
+    const efficiency = total > 0 ? Math.round(((total - totalOperations) / total) * 100) : 100;
 
     send({
-      message: `🎉 SYNC COMPLETE! Added: ${added}, Updated: ${updated}, Deleted: ${deleted}, Skipped: ${skipped}, Failed: ${failed}`,
+      message: `🎉 SYNC COMPLETE! Added: ${added}, Updated: ${updated}, Deleted: ${deleted}, Failed: ${failed}`,
       type: 'complete',
       complete: true,
-      finalCounts: { added, updated, deleted, skipped, failed }
+      finalCounts: { added, updated, deleted, skipped, failed },
+      efficiency: {
+        percentage: efficiency,
+        itemsProcessed: totalOperations,
+        totalItems: total
+      }
     });
 
     end();
@@ -162,6 +243,20 @@ fastify.get('/sync-stream', async (req, reply) => {
     send({ message: `❌ Sync error: ${err.message}`, type: 'error' });
     end();
   }
+});
+
+// Error handler
+fastify.setErrorHandler(async (error, request, reply) => {
+  request.log.error(error);
+  
+  const password = request.query.password || '';
+  
+  reply.view('error', {
+    error: error.message,
+    password,
+    code: error.code || 'UNKNOWN_ERROR',
+    details: error.stack || 'No additional details available'
+  });
 });
 
 // Export for Vercel
