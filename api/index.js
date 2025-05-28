@@ -1,6 +1,8 @@
 // Fastify server with full sync capabilities and view rendering, Vercel-compatible
 const path = require('path');
 const Fastify = require('fastify');
+const handlebars = require('handlebars');
+
 const fastify = Fastify({ logger: true });
 
 const { getAllRaindrops, getRaindropTotal, getRecentRaindrops } = require('../services/raindrop');
@@ -12,43 +14,46 @@ const {
   deleteNotionPage
 } = require('../services/notion');
 
-// Register Handlebars with helpers
+// Register Handlebars helpers BEFORE setting up the view engine
+handlebars.registerHelper('eq', function(a, b) {
+  return a === b;
+});
+
+handlebars.registerHelper('ne', function(a, b) {
+  return a !== b;
+});
+
+handlebars.registerHelper('gt', function(a, b) {
+  return a > b;
+});
+
+handlebars.registerHelper('lt', function(a, b) {
+  return a < b;
+});
+
+handlebars.registerHelper('and', function(a, b) {
+  return a && b;
+});
+
+handlebars.registerHelper('or', function(a, b) {
+  return a || b;
+});
+
+handlebars.registerHelper('not', function(a) {
+  return !a;
+});
+
+handlebars.registerHelper('formatNumber', function(num) {
+  return num ? num.toLocaleString() : '0';
+});
+
+// Now register the view engine
 fastify.register(require('@fastify/view'), {
   engine: {
-    handlebars: require('handlebars')
+    handlebars: handlebars
   },
   root: path.join(__dirname, '../src/pages'),
-  layout: false,
-  options: {
-    helpers: {
-      // Add the missing 'eq' helper
-      eq: function(a, b) {
-        return a === b;
-      },
-      // Add other useful helpers
-      ne: function(a, b) {
-        return a !== b;
-      },
-      gt: function(a, b) {
-        return a > b;
-      },
-      lt: function(a, b) {
-        return a < b;
-      },
-      and: function(a, b) {
-        return a && b;
-      },
-      or: function(a, b) {
-        return a || b;
-      },
-      not: function(a) {
-        return !a;
-      },
-      formatNumber: function(num) {
-        return num ? num.toLocaleString() : '0';
-      }
-    }
-  }
+  layout: false
 });
 
 fastify.register(require('@fastify/static'), {
