@@ -384,31 +384,32 @@ class ProgressiveEnhancements {
 
   // ===== TOUCH ENHANCEMENTS =====
   setupTouchEnhancements() {
-    if (!Utils.device.hasTouch()) return;
-    
-    // Add touch feedback for buttons
-    const buttons = document.querySelectorAll('button, .action-button, .sync-button');
-    
-    buttons.forEach(button => {
-      button.addEventListener('touchstart', () => {
-        button.classList.add('touch-active');
-      });
+    // Add safety check for touch capability
+    const hasTouch = ('ontouchstart' in window) || 
+                     (navigator.maxTouchPoints > 0) || 
+                     (navigator.msMaxTouchPoints > 0);
+
+    if (!hasTouch) {
+      return; // Exit if device doesn't support touch
+    }
+
+    try {
+      document.documentElement.classList.add('touch-device');
       
-      button.addEventListener('touchend', () => {
-        setTimeout(() => {
+      // Add touch feedback to buttons
+      const buttons = document.querySelectorAll('button, [role="button"]');
+      buttons.forEach(button => {
+        button.addEventListener('touchstart', () => {
+          button.classList.add('touch-active');
+        }, { passive: true });
+        
+        button.addEventListener('touchend', () => {
           button.classList.remove('touch-active');
-        }, 150);
+        }, { passive: true });
       });
-    });
-    
-    // Prevent zoom on double-tap for buttons
-    buttons.forEach(button => {
-      button.addEventListener('touchend', (e) => {
-        e.preventDefault();
-      });
-    });
-    
-    Utils.log.info('Touch enhancements enabled');
+    } catch (error) {
+      console.warn('Error setting up touch enhancements:', error);
+    }
   }
 
   // ===== ACCESSIBILITY ENHANCEMENTS =====
