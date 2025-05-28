@@ -14,37 +14,21 @@ const {
   deleteNotionPage
 } = require('../services/notion');
 
-// Register Handlebars helpers BEFORE setting up the view engine
-handlebars.registerHelper('eq', function(a, b) {
-  return a === b;
-});
+// Register all helpers in a more robust way
+const helpers = {
+  eq: (a, b) => a === b,
+  ne: (a, b) => a !== b,
+  gt: (a, b) => a > b,
+  lt: (a, b) => a < b,
+  and: (a, b) => a && b,
+  or: (a, b) => a || b,
+  not: (a) => !a,
+  formatNumber: (num) => num ? num.toLocaleString() : '0'
+};
 
-handlebars.registerHelper('ne', function(a, b) {
-  return a !== b;
-});
-
-handlebars.registerHelper('gt', function(a, b) {
-  return a > b;
-});
-
-handlebars.registerHelper('lt', function(a, b) {
-  return a < b;
-});
-
-handlebars.registerHelper('and', function(a, b) {
-  return a && b;
-});
-
-handlebars.registerHelper('or', function(a, b) {
-  return a || b;
-});
-
-handlebars.registerHelper('not', function(a) {
-  return !a;
-});
-
-handlebars.registerHelper('formatNumber', function(num) {
-  return num ? num.toLocaleString() : '0';
+// Register helpers before view engine setup
+Object.entries(helpers).forEach(([name, fn]) => {
+  handlebars.registerHelper(name, fn);
 });
 
 // Now register the view engine
@@ -97,7 +81,6 @@ fastify.get('/', async (req, reply) => {
 fastify.get('/sync', async (req, reply) => {
   const password = req.query.password || '';
   const mode = req.query.mode || 'smart';
-  const daysBack = parseInt(req.query.daysBack || '30');
   const deleteOrphaned = req.query.deleteOrphaned === 'true';
 
   try {
@@ -105,15 +88,11 @@ fastify.get('/sync', async (req, reply) => {
       password,
       mode,
       syncMode: mode,
-      daysBack,
       deleteOrphaned,
-      pageTitle: mode === 'reset' ? 'Reset & Full Sync' : mode === 'incremental' ? 'Incremental Sync' : 'Smart Sync',
-      pageDescription:
-        mode === 'reset'
-          ? 'Delete all Notion pages and recreate from Raindrop'
-          : mode === 'incremental'
-          ? `Sync only recent bookmarks (${daysBack} days)`
-          : 'Smart analysis — only sync what needs to change'
+      pageTitle: mode === 'reset' ? 'Reset & Full Sync' : 'Smart Sync',
+      pageDescription: mode === 'reset'
+        ? 'Delete all Notion pages and recreate from Raindrop'
+        : 'Smart analysis — only sync what needs to change'
     });
   } catch (error) {
     req.log.error(error);
@@ -157,7 +136,6 @@ fastify.get('/api/counts', async (req, reply) => {
 fastify.get('/sync-stream', async (req, reply) => {
   const password = req.query.password || '';
   const mode = req.query.mode || 'smart';
-  const daysBack = parseInt(req.query.daysBack || '30');
   const deleteOrphaned = req.query.deleteOrphaned === 'true';
 
   reply.raw.writeHead(200, {
@@ -179,14 +157,18 @@ fastify.get('/sync-stream', async (req, reply) => {
   try {
     send({ message: '🚀 Starting sync...', type: 'info' });
 
-    let raindrops;
-    if (mode === 'incremental') {
-      const hours = daysBack * 24;
-      raindrops = await getRecentRaindrops(hours);
-      send({ message: `📅 Loaded ${raindrops.length} recent bookmarks (${daysBack} days)`, type: 'info' });
-    } else {
-      raindrops = await getAllRaindrops();
-      send({ message: `📚 Loaded ${raindrops.length} total bookmarks`, type: 'info' });
+    // Always load all raindrops for both modes
+    const raindrops = await getAllRaindrops();
+    send({ message: `📚 Loaded ${raindrops.length} total bookmarks`, type: 'info' });
+
+    // If it's a reset, delete all existing pages first
+    if (mode === 'reset') {
+      send({ message: '🗑️ Clearing existing Notion pages...', type: 'info' });
+      const existingPages = await getNotionPages();
+      for (const page of existingPages) {
+        await deleteNotionPage(page.id);
+      }
+      send({ message: '✨ Notion database cleared', type: 'info' });
     }
 
     const notionPages = await getNotionPages();
