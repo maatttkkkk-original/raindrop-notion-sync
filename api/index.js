@@ -165,8 +165,23 @@ fastify.get('/sync-stream', async (req, reply) => {
     if (mode === 'reset') {
       send({ message: '🗑️ Clearing existing Notion pages...', type: 'info' });
       const existingPages = await getNotionPages();
-      for (const page of existingPages) {
-        await deleteNotionPage(page.id);
+      
+      // Delete in batches of 10 with proven delays
+      const deleteChunks = chunkArray(existingPages, 10);
+      for (let i = 0; i < deleteChunks.length; i++) {
+        const chunk = deleteChunks[i];
+        send({ message: `🗑️ Deleting batch ${i + 1}/${deleteChunks.length} (${chunk.length} pages)`, type: 'processing' });
+        
+        for (const page of chunk) {
+          await deleteNotionPage(page.id);
+          // PROVEN WORKING DELAY: 200ms between deletions
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        
+        // PROVEN WORKING DELAY: 2000ms between batches
+        if (i < deleteChunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
       send({ message: '✨ Notion database cleared', type: 'info' });
     }
@@ -180,37 +195,52 @@ fastify.get('/sync-stream', async (req, reply) => {
     const total = raindrops.length + (deleteOrphaned ? notionPages.length : 0);
     let processed = 0;
 
-    // Process raindrops
-    for (const drop of raindrops) {
-      const notionPage = notionMap.get(drop.link);
-      try {
-        if (!notionPage) {
-          const result = await createNotionPage(drop);
-          if (result.success) {
-            send({ message: `➕ Added: ${drop.title}`, type: 'added' });
-            added++;
+    // Process raindrops in batches of 10
+    const batches = chunkArray(raindrops, 10);
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      send({ message: `📝 Processing batch ${i + 1}/${batches.length} (${batch.length} items)`, type: 'processing' });
+
+      for (const drop of batch) {
+        const notionPage = notionMap.get(drop.link);
+        try {
+          if (!notionPage) {
+            const result = await createNotionPage(drop);
+            if (result.success) {
+              send({ message: `➕ Added: ${drop.title}`, type: 'added' });
+              added++;
+            } else {
+              send({ message: `❌ Failed to add: ${drop.title}`, type: 'failed' });
+              failed++;
+            }
           } else {
-            send({ message: `❌ Failed to add: ${drop.title}`, type: 'failed' });
-            failed++;
+            await updateNotionPage(notionPage.id, drop);
+            send({ message: `🔄 Updated: ${drop.title}`, type: 'updated' });
+            updated++;
           }
-        } else {
-          await updateNotionPage(notionPage.id, drop);
-          send({ message: `🔄 Updated: ${drop.title}`, type: 'updated' });
-          updated++;
+          // PROVEN WORKING DELAY: 200ms between operations
+          await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (err) {
+          failed++;
+          send({ message: `❌ Failed on: ${drop.title} - ${err.message}`, type: 'failed' });
+          // PROVEN WORKING DELAY: 400ms on error
+          await new Promise(resolve => setTimeout(resolve, 400));
         }
-      } catch (err) {
-        failed++;
-        send({ message: `❌ Failed on: ${drop.title} - ${err.message}`, type: 'failed' });
+
+        processed++;
+        const progress = Math.round((processed / total) * 100);
+        send({ 
+          progress, 
+          counts: { added, updated, deleted, skipped, failed },
+          message: `Progress: ${processed}/${total} (${progress}%)`,
+          type: 'info'
+        });
       }
 
-      processed++;
-      const progress = Math.round((processed / total) * 100);
-      send({ 
-        progress, 
-        counts: { added, updated, deleted, skipped, failed },
-        message: `Progress: ${processed}/${total} (${progress}%)`,
-        type: 'info'
-      });
+      // PROVEN WORKING DELAY: 2000ms between batches
+      if (i < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
 
     // Handle orphaned pages if requested
@@ -262,6 +292,15 @@ fastify.get('/sync-stream', async (req, reply) => {
     end();
   }
 });
+
+// Helper function for chunking arrays
+function chunkArray(arr, size) {
+  const result = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
+}
 
 // Error handler
 fastify.setErrorHandler(async (error, request, reply) => {
