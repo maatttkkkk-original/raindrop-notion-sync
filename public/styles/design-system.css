@@ -3,7 +3,7 @@
 /* CSS Custom Properties */
 :root {
   /* Typography */
-  --font-primary: 'Helvetica Neue', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-primary: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
   --font-size-huge: 72px;
   --font-size-large: 48px;
   --font-size-medium: 24px;
