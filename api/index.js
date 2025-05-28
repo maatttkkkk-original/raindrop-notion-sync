@@ -70,6 +70,26 @@ fastify.get('/sync', async (req, reply) => {
   }
 });
 
+fastify.get('/api/counts', async (req, reply) => {
+  const password = req.query.password || '';
+
+  try {
+    const [raindropTotal, notionTotal] = await Promise.all([
+      getRaindropTotal(password),
+      getTotalNotionPages(password)
+    ]);
+
+    reply.send({
+      raindropTotal,
+      notionTotal,
+      isSynced: Math.abs(raindropTotal - notionTotal) <= 5,
+      success: true
+    });
+  } catch (error) {
+    reply.status(500).send({ error: error.message });
+  }
+});
+
 fastify.get('/sync-stream', async (req, reply) => {
   const password = req.query.password || '';
   const mode = req.query.mode || 'smart';
