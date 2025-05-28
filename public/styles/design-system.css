@@ -1,15 +1,4 @@
-/* Design System - Extracted from Figma Design */
 /* File: public/styles/design-system.css */
-
-/* Typography */
-@font-face {
-  font-family: 'Helvetica Neue';
-  src: url('../fonts/helvetica-neue.woff2') format('woff2'),
-       url('../fonts/helvetica-neue.woff') format('woff');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
 
 /* CSS Custom Properties */
 :root {
