@@ -385,4 +385,51 @@
   }
 }
 
+/* Safe Log Display Enhancement - Add to end of dashboard.css */
+/* Works with existing styles, no conflicts */
 
+/* Only enhance what needs fixing without overriding existing rules */
+.dashboard-section.section-7 .status-display {
+  /* Improve readability without conflicting with existing 12px/1.3 */
+  min-height: 80px; /* Ensure minimum readable space */
+  max-height: calc(100vh / 8 - 20px); /* Use available section height */
+}
+
+/* Individual log messages - enhance existing sync-update class */
+.sync-update {
+  /* Only add what's missing, don't override dashboard.css rules */
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  display: block;
+  white-space: pre-wrap; /* Preserve formatting */
+}
+
+/* Better scrollbar for the log area specifically */
+.dashboard-section.section-7 .status-display::-webkit-scrollbar {
+  width: 4px; /* Thin scrollbar to save space */
+}
+
+.dashboard-section.section-7 .status-display::-webkit-scrollbar-track {
+  background: rgba(0,0,0,0.05);
+  border-radius: 2px;
+}
+
+.dashboard-section.section-7 .status-display::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.2);
+  border-radius: 2px;
+}
+
+.dashboard-section.section-7 .status-display::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.4);
+}
+
+/* Ensure the log section uses available space efficiently */
+.dashboard-section.section-7 .section-content {
+  padding: 8px 12px; /* Slightly tighter padding for more log space */
+  height: 100%;
+}
+
+/* Make sure log messages are visible by adding slight spacing */
+.dashboard-section.section-7 .sync-update {
+  margin-bottom: 2px; /* Just a tiny bit of breathing room */
+}
