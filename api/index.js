@@ -12,12 +12,43 @@ const {
   deleteNotionPage
 } = require('../services/notion');
 
+// Register Handlebars with helpers
 fastify.register(require('@fastify/view'), {
   engine: {
     handlebars: require('handlebars')
   },
   root: path.join(__dirname, '../src/pages'),
-  layout: false
+  layout: false,
+  options: {
+    helpers: {
+      // Add the missing 'eq' helper
+      eq: function(a, b) {
+        return a === b;
+      },
+      // Add other useful helpers
+      ne: function(a, b) {
+        return a !== b;
+      },
+      gt: function(a, b) {
+        return a > b;
+      },
+      lt: function(a, b) {
+        return a < b;
+      },
+      and: function(a, b) {
+        return a && b;
+      },
+      or: function(a, b) {
+        return a || b;
+      },
+      not: function(a) {
+        return !a;
+      },
+      formatNumber: function(num) {
+        return num ? num.toLocaleString() : '0';
+      }
+    }
+  }
 });
 
 fastify.register(require('@fastify/static'), {
