@@ -1,6 +1,6 @@
 /**
- * Enhanced Sync Management - Exact Match to Your 8-Section Layout
- * Verified against your actual HTML structure
+ * Enhanced Sync Management - Robust EventSource Connection
+ * Fixed connection stability and error handling
  */
 
 class SyncManager {
@@ -16,6 +16,9 @@ class SyncManager {
       skipped: 0,
       failed: 0
     };
+    this.connectionRetries = 0;
+    this.maxRetries = 3;
+    this.heartbeatTimeout = null;
     
     this.init();
   }
@@ -24,31 +27,31 @@ class SyncManager {
     Utils.ready(() => {
       this.setupElements();
       this.bindEvents();
-      console.log('🚀 SyncManager initialized');
+      console.log('🚀 Enhanced SyncManager initialized with robust EventSource handling');
     });
   }
 
   setupElements() {
     // Cache DOM elements - EXACT IDs from your sync.hbs
     this.elements = {
-      // Main sync button - from your sync.hbs: id="syncBtn"
+      // Main sync button
       startBtn: document.getElementById('syncBtn'),
       
-      // Status/log area - from your sync.hbs: id="status"
+      // Status/log area
       status: document.getElementById('status'),
       
-      // Progress elements - from your sync.hbs
+      // Progress elements
       progressText: document.getElementById('progress-text'),
       progressFill: document.getElementById('progress-fill'),
       
-      // Stats elements - from your sync.hbs
+      // Stats elements
       syncStats: document.getElementById('sync-stats'),
       addedCount: document.getElementById('added-count'),
       updatedCount: document.getElementById('updated-count'),
       deletedCount: document.getElementById('deleted-count'),
       failedCount: document.getElementById('failed-count'),
       
-      // Efficiency elements - from your sync.hbs
+      // Efficiency elements
       efficiencyDisplay: document.getElementById('efficiency-display'),
       efficiencyPercentage: document.getElementById('efficiency-percentage'),
       efficiencyStatus: document.getElementById('efficiency-status'),
@@ -76,7 +79,7 @@ class SyncManager {
   }
 
   bindEvents() {
-    // Bind sync button - this should work now
+    // Bind sync button
     if (this.elements.startBtn) {
       this.elements.startBtn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -99,21 +102,30 @@ class SyncManager {
 
     // Page cleanup events
     window.addEventListener('beforeunload', () => {
-      if (this.evtSource) {
-        this.evtSource.close();
-      }
+      this.cleanup();
     });
 
     // Network status events
     window.addEventListener('online', () => {
       if (this.syncInProgress && !this.evtSource) {
         this.showStatus('🌐 Connection restored, attempting to reconnect...', 'info');
+        this.reconnect();
       }
     });
 
     window.addEventListener('offline', () => {
       if (this.syncInProgress) {
         this.showStatus('🌐 Connection lost - sync will continue when online', 'warning');
+      }
+    });
+
+    // Handle page visibility changes
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && this.evtSource) {
+        console.log('📱 Page hidden, keeping connection alive');
+      } else if (!document.hidden && this.syncInProgress && !this.evtSource) {
+        console.log('📱 Page visible again, checking connection');
+        this.reconnect();
       }
     });
   }
@@ -126,7 +138,7 @@ class SyncManager {
       return;
     }
 
-    // Get URL parameters - EXACT parameter names from your code
+    // Get URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const password = urlParams.get('password');
     const mode = urlParams.get('mode') || 'smart';
@@ -141,13 +153,14 @@ class SyncManager {
       return;
     }
 
-    // Reset stats
+    // Reset state
     this.resetStats();
+    this.connectionRetries = 0;
 
     // Update UI immediately
     this.updateSyncUI(true);
     
-    // Build sync URL - EXACT endpoint from your api/index.js
+    // Build sync URL
     const syncUrl = new URL('/sync-stream', window.location.origin);
     syncUrl.searchParams.set('password', password);
     syncUrl.searchParams.set('mode', mode);
@@ -162,21 +175,27 @@ class SyncManager {
     // Show initial status
     this.showStatus('🚀 Initializing sync connection...', 'info');
     
-    // Start connection with small delay
-    setTimeout(() => {
-      this.connectToSyncStream(syncUrl.toString());
-    }, 100);
+    // Start connection
+    this.connectToSyncStream(syncUrl.toString());
   }
 
   connectToSyncStream(url) {
     console.log('🔌 Creating EventSource connection to:', url);
     
     try {
+      // Clean up any existing connection
+      this.cleanup();
+      
       this.evtSource = new EventSource(url);
+      
+      // Set up heartbeat timeout
+      this.resetHeartbeat();
       
       this.evtSource.onopen = (event) => {
         console.log('✅ EventSource connection opened', event);
         this.showStatus('🔗 Connected to sync stream', 'success');
+        this.connectionRetries = 0; // Reset retry counter on successful connection
+        this.resetHeartbeat();
       };
 
       this.evtSource.onmessage = (event) => {
@@ -184,6 +203,10 @@ class SyncManager {
           console.log('📨 Raw message received:', event.data);
           const data = JSON.parse(event.data);
           console.log('📦 Parsed message:', data);
+          
+          // Reset heartbeat on any message
+          this.resetHeartbeat();
+          
           this.handleSyncMessage(data);
         } catch (error) {
           console.error('❌ Error parsing sync message:', error, 'Raw data:', event.data);
@@ -195,15 +218,21 @@ class SyncManager {
         console.error('❌ EventSource error:', error);
         console.log('EventSource readyState:', this.evtSource?.readyState);
         
+        // Clear heartbeat timeout
+        this.clearHeartbeat();
+        
         if (!navigator.onLine) {
           this.showStatus('🌐 No internet connection - waiting...', 'warning');
           return;
         }
         
+        // Handle different error scenarios
         if (this.evtSource?.readyState === EventSource.CLOSED) {
-          this.handleSyncError('Connection closed unexpectedly');
+          this.handleConnectionError('Connection closed unexpectedly');
+        } else if (this.evtSource?.readyState === EventSource.CONNECTING) {
+          this.showStatus('🔄 Reconnecting to sync stream...', 'info');
         } else {
-          this.handleSyncError('Connection error occurred');
+          this.handleConnectionError('Connection error occurred');
         }
       };
 
@@ -213,10 +242,80 @@ class SyncManager {
     }
   }
 
+  handleConnectionError(errorMessage) {
+    console.error('🔌 Connection error:', errorMessage);
+    
+    if (this.connectionRetries < this.maxRetries && this.syncInProgress) {
+      this.connectionRetries++;
+      const delay = Math.min(1000 * Math.pow(2, this.connectionRetries - 1), 10000); // Exponential backoff, max 10s
+      
+      this.showStatus(`🔄 Connection lost, retrying in ${delay/1000}s... (${this.connectionRetries}/${this.maxRetries})`, 'warning');
+      
+      setTimeout(() => {
+        if (this.syncInProgress) {
+          this.reconnect();
+        }
+      }, delay);
+    } else {
+      this.handleSyncError(errorMessage);
+    }
+  }
+
+  reconnect() {
+    if (!this.syncInProgress) return;
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const password = urlParams.get('password');
+    const mode = urlParams.get('mode') || 'smart';
+    const daysBack = urlParams.get('daysBack') || '30';
+    const deleteOrphaned = urlParams.get('deleteOrphaned') === 'true';
+    
+    const syncUrl = new URL('/sync-stream', window.location.origin);
+    syncUrl.searchParams.set('password', password);
+    syncUrl.searchParams.set('mode', mode);
+    syncUrl.searchParams.set('daysBack', daysBack);
+    syncUrl.searchParams.set('deleteOrphaned', deleteOrphaned);
+    syncUrl.searchParams.set('_t', Date.now().toString());
+    
+    console.log('🔄 Attempting to reconnect...');
+    this.connectToSyncStream(syncUrl.toString());
+  }
+
+  resetHeartbeat() {
+    this.clearHeartbeat();
+    
+    // Set a timeout for heartbeat - if no message in 30 seconds, consider connection stale
+    this.heartbeatTimeout = setTimeout(() => {
+      if (this.syncInProgress && this.evtSource) {
+        console.log('💔 Heartbeat timeout - connection may be stale');
+        this.handleConnectionError('Connection timeout');
+      }
+    }, 30000);
+  }
+
+  clearHeartbeat() {
+    if (this.heartbeatTimeout) {
+      clearTimeout(this.heartbeatTimeout);
+      this.heartbeatTimeout = null;
+    }
+  }
+
   handleSyncMessage(data) {
-    const { message, type, counts, complete, finalCounts, progress, efficiency } = data;
+    const { message, type, counts, complete, finalCounts, progress, efficiency, connected, error } = data;
 
     console.log('🔄 Processing sync message:', { type, message: message?.substring(0, 50) + '...', progress, complete });
+
+    // Handle heartbeat messages
+    if (type === 'heartbeat') {
+      console.log('💓 Heartbeat received');
+      return;
+    }
+
+    // Handle connection confirmation
+    if (connected) {
+      console.log('🔗 Connection confirmed');
+      return;
+    }
 
     // Update progress bar and text
     if (progress !== undefined) {
@@ -248,11 +347,16 @@ class SyncManager {
       console.log('🎉 Sync completed!', finalCounts);
       this.handleSyncComplete(finalCounts, data.mode);
     }
+
+    // Handle errors
+    if (error) {
+      this.handleSyncError(message || 'Sync error occurred');
+    }
   }
 
   handleSyncComplete(finalCounts, mode) {
     setTimeout(() => {
-      this.cleanupConnection();
+      this.cleanup();
       this.updateSyncUI(false);
       
       // Update action section to show completion
@@ -270,11 +374,10 @@ class SyncManager {
       if (finalCounts) {
         this.updateStats(finalCounts);
         
-        const total = finalCounts.added + finalCounts.updated + finalCounts.deleted;
         let message = '🎉 Sync completed successfully! ';
         
         if (mode === 'reset') {
-          message += `Created: ${finalCounts.added}, Deleted: ${finalCounts.deleted}`;
+          message += `Created: ${finalCounts.created || finalCounts.added}, Deleted: ${finalCounts.deleted}`;
         } else {
           message += `Added: ${finalCounts.added}, Updated: ${finalCounts.updated}, Failed: ${finalCounts.failed || 0}`;
         }
@@ -293,7 +396,7 @@ class SyncManager {
   handleSyncError(errorMessage) {
     console.error('❌ Sync error:', errorMessage);
     
-    this.cleanupConnection();
+    this.cleanup();
     this.updateSyncUI(false);
     
     // Update action section to show error
@@ -313,9 +416,13 @@ class SyncManager {
     Utils.events.emit('syncError', { message: errorMessage });
   }
 
-  cleanupConnection() {
+  cleanup() {
+    console.log('🧹 Cleaning up connections and timers');
+    
+    this.clearHeartbeat();
+    
     if (this.evtSource) {
-      console.log('🧹 Cleaning up EventSource connection');
+      console.log('🔌 Closing EventSource connection');
       this.evtSource.close();
       this.evtSource = null;
     }
@@ -326,6 +433,7 @@ class SyncManager {
     }
     
     this.syncInProgress = false;
+    this.connectionRetries = 0;
   }
 
   updateSyncUI(inProgress) {
@@ -381,7 +489,7 @@ class SyncManager {
     }
   }
 
-  // 🎯 THIS IS THE MAIN LOG FUNCTION - VERIFIED TO WORK
+  // 🎯 MAIN LOG FUNCTION - ENHANCED WITH BETTER STYLING
   showStatus(message, type = 'info') {
     console.log(`📝 Showing status: [${type}] ${message}`);
     
@@ -398,7 +506,7 @@ class SyncManager {
     const statusElement = document.createElement('div');
     statusElement.className = `sync-update ${type}`;
     
-    // Styling based on message type
+    // Enhanced styling based on message type
     const styles = {
       info: { borderLeft: '4px solid #3b82f6', background: '#eff6ff', color: '#1e40af' },
       success: { borderLeft: '4px solid #22c55e', background: '#f0fdf4', color: '#15803d' },
@@ -409,7 +517,10 @@ class SyncManager {
       error: { borderLeft: '4px solid #ef4444', background: '#fef2f2', color: '#dc2626' },
       warning: { borderLeft: '4px solid #f59e0b', background: '#fffbeb', color: '#d97706' },
       complete: { borderLeft: '4px solid #22c55e', background: '#f0fdf4', color: '#15803d', fontWeight: '600' },
-      analysis: { borderLeft: '4px solid #8b5cf6', background: '#f3e8ff', color: '#7c3aed', fontWeight: '500' }
+      analysis: { borderLeft: '4px solid #8b5cf6', background: '#f3e8ff', color: '#7c3aed', fontWeight: '500' },
+      processing: { borderLeft: '4px solid #8b5cf6', background: '#f3e8ff', color: '#7c3aed' },
+      fetching: { borderLeft: '4px solid #06b6d4', background: '#ecfeff', color: '#0891b2' },
+      summary: { borderLeft: '4px solid #10b981', background: '#ecfdf5', color: '#047857', fontWeight: '600' }
     };
     
     const style = styles[type] || styles.info;
@@ -421,6 +532,7 @@ class SyncManager {
       fontSize: '14px',
       lineHeight: '1.5',
       wordBreak: 'break-word',
+      transition: 'all 0.2s ease',
       ...style
     });
     
@@ -429,15 +541,15 @@ class SyncManager {
     const timestamp = now.toLocaleTimeString();
     statusElement.textContent = `[${timestamp}] ${message}`;
     
-    // Add to status container
+    // Add to status container with smooth animation
     this.elements.status.appendChild(statusElement);
     
     // Auto-scroll to bottom for real-time feel
     this.elements.status.scrollTop = this.elements.status.scrollHeight;
     
-    // Limit messages for performance (keep last 50)
+    // Limit messages for performance (keep last 100)
     const messages = this.elements.status.children;
-    if (messages.length > 50) {
+    if (messages.length > 100) {
       this.elements.status.removeChild(messages[0]);
     }
     
@@ -449,19 +561,43 @@ class SyncManager {
     
     console.log('📊 Updating stats:', counts);
     
-    // Update individual stat counters
+    // Update individual stat counters with animation
     if (this.elements.addedCount && counts.added !== undefined) {
-      this.elements.addedCount.textContent = counts.added;
+      this.animateCounter(this.elements.addedCount, counts.added);
     }
     if (this.elements.updatedCount && counts.updated !== undefined) {
-      this.elements.updatedCount.textContent = counts.updated;
+      this.animateCounter(this.elements.updatedCount, counts.updated);
     }
     if (this.elements.deletedCount && counts.deleted !== undefined) {
-      this.elements.deletedCount.textContent = counts.deleted;
+      this.animateCounter(this.elements.deletedCount, counts.deleted);
     }
     if (this.elements.failedCount && counts.failed !== undefined) {
-      this.elements.failedCount.textContent = counts.failed;
+      this.animateCounter(this.elements.failedCount, counts.failed);
     }
+  }
+
+  animateCounter(element, newValue) {
+    const currentValue = parseInt(element.textContent) || 0;
+    if (currentValue === newValue) return;
+    
+    // Simple counter animation
+    const duration = 500;
+    const steps = 20;
+    const increment = (newValue - currentValue) / steps;
+    let current = currentValue;
+    let step = 0;
+    
+    const timer = setInterval(() => {
+      step++;
+      current += increment;
+      
+      if (step >= steps) {
+        element.textContent = newValue;
+        clearInterval(timer);
+      } else {
+        element.textContent = Math.round(current);
+      }
+    }, duration / steps);
   }
 
   updateEfficiencyDisplay(efficiency) {
@@ -497,7 +633,7 @@ class SyncManager {
   // Public API
   stopSync() {
     if (this.evtSource) {
-      this.cleanupConnection();
+      this.cleanup();
       this.showStatus('⏹️ Sync stopped by user', 'warning');
       this.updateSyncUI(false);
     }
@@ -512,6 +648,7 @@ class SyncManager {
       syncInProgress: this.syncInProgress,
       hasEventSource: !!this.evtSource,
       eventSourceState: this.evtSource?.readyState,
+      connectionRetries: this.connectionRetries,
       elements: Object.keys(this.elements).reduce((acc, key) => {
         acc[key] = !!this.elements[key];
         return acc;
@@ -519,6 +656,18 @@ class SyncManager {
       currentUrl: window.location.href,
       urlParams: Object.fromEntries(new URLSearchParams(window.location.search))
     };
+  }
+
+  // Connection health check
+  checkConnection() {
+    if (!this.evtSource) return 'disconnected';
+    
+    switch (this.evtSource.readyState) {
+      case EventSource.CONNECTING: return 'connecting';
+      case EventSource.OPEN: return 'connected';
+      case EventSource.CLOSED: return 'closed';
+      default: return 'unknown';
+    }
   }
 }
 
@@ -587,12 +736,12 @@ class DashboardManager {
 
 // Initialize everything
 Utils.ready(() => {
-  console.log('🚀 Initializing sync management system...');
+  console.log('🚀 Initializing enhanced sync management system...');
   
   // Initialize sync manager if sync button exists
   if (document.getElementById('syncBtn')) {
     window.syncManager = new SyncManager();
-    console.log('✅ SyncManager initialized');
+    console.log('✅ Enhanced SyncManager initialized');
   } else {
     console.log('ℹ️ No sync button found, skipping SyncManager');
   }
@@ -603,20 +752,22 @@ Utils.ready(() => {
     console.log('✅ DashboardManager initialized');
   }
   
-  // Add debug helper
+  // Add debug helpers
   window.syncDebug = () => {
     if (window.syncManager) {
-      console.log('🐛 Sync Debug Info:', window.syncManager.getDebugInfo());
+      console.log('🐛 Enhanced Sync Debug Info:', window.syncManager.getDebugInfo());
+      console.log('🔌 Connection Status:', window.syncManager.checkConnection());
     } else {
       console.log('❌ No sync manager found');
     }
   };
   
-  console.log('🎉 Sync management system ready!');
-  console.log('💡 Use syncDebug() in console for debugging info');
+  window.syncStop = () => {
+    if (window.syncManager) {
+      window.syncManager.stopSync();
+    }
+  };
+  
+  console.log('🎉 Enhanced sync management system ready!');
+  console.log('💡 Use syncDebug() and syncStop() in console for debugging');
 });
-
-// Export for module usage
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { SyncManager, DashboardManager };
-}
