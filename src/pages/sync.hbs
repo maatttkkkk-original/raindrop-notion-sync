@@ -1,105 +1,129 @@
-// MINIMAL SYNC PAGE - GUARANTEED TO LOAD
-fastify.get('/sync', async (req, reply) => {
-  const password = req.query.password || '';
-
-  console.log('🔄 Sync page requested with password:', password ? '[PROVIDED]' : '[MISSING]');
-
-  // Validate password
-  if (!validatePassword(password)) {
-    console.log('❌ Password validation failed');
-    return reply.view('error', {
-      error: 'Invalid password',
-      password: '',
-      code: 'AUTH_ERROR',
-      details: 'Please provide a valid password'
-    });
-  }
-
-  try {
-    console.log('✅ Password valid, rendering sync page...');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Sync - Raindrop Notion</title>
+  
+  <link rel="stylesheet" href="/public/styles/design-system.css?v=2024-05-28-001">
+  <link rel="stylesheet" href="/public/styles/components.css?v=2024-05-28-001">
+  <link rel="stylesheet" href="/public/styles/dashboard.css?v=2024-05-28-001">
+</head>
+<body>
+  <main class="dashboard-8-section" id="main-content" role="main">
+    <!-- Section 1: Title -->
+    <div class="dashboard-section section-1 bg-white">
+      <div class="section-content">
+        <h1 class="text-huge sync-title" id="sync-title">Smart Sync</h1>
+      </div>
+    </div>
     
-    // MINIMAL template data - no complex logic
-    const templateData = {
-      password: password,
-      mode: req.query.mode || 'smart',
-      daysBack: 30,
-      deleteOrphaned: false
-    };
-
-    console.log('📄 Template data:', templateData);
-
-    reply.view('sync', templateData);
+    <div class="dashboard-divider"></div>
     
-    console.log('✅ Sync page rendered successfully');
-
-  } catch (error) {
-    console.error('❌ Sync page render error:', error);
+    <!-- Section 2: Action Button -->
+    <div class="dashboard-section section-2 bg-yellow" id="action-section">
+      <div class="section-content">
+        <button id="syncBtn" class="section-action-button text-huge text-black" type="button">
+          Start Smart Sync
+        </button>
+      </div>
+    </div>
     
-    // Fallback: send basic HTML if template fails
-    reply.type('text/html').send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Sync Page</title>
-        <link rel="stylesheet" href="/public/styles/design-system.css">
-        <link rel="stylesheet" href="/public/styles/dashboard.css">
-      </head>
-      <body>
-        <main class="dashboard-8-section">
-          <div class="dashboard-section section-1 bg-white">
-            <div class="section-content">
-              <h1 class="text-huge">Smart Sync</h1>
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 3: Description -->
+    <div class="dashboard-section section-3 bg-white" id="description-section">
+      <div class="section-content">
+        <div class="text-large" id="sync-description">
+          Smart analysis - only sync what needs to change
+        </div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 4: Progress -->
+    <div class="dashboard-section section-4 bg-white" id="progress-section">
+      <div class="section-content">
+        <div class="sync-progress">
+          <div class="progress-bar" style="display: none;">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="text-medium" id="progress-text">Ready to sync...</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 5: Stats -->
+    <div class="dashboard-section section-5 bg-white" id="stats-section">
+      <div class="section-content">
+        <div class="sync-stats" id="sync-stats" style="display: none;">
+          <div class="stat-group">
+            <div class="stat-item">
+              <span class="stat-number text-large" id="added-count">0</span>
+              <span class="stat-label text-small">Added</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number text-large" id="updated-count">0</span>
+              <span class="stat-label text-small">Updated</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number text-large" id="deleted-count">0</span>
+              <span class="stat-label text-small">Deleted</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number text-large" id="failed-count">0</span>
+              <span class="stat-label text-small">Failed</span>
             </div>
           </div>
-          <div class="dashboard-divider"></div>
-          <div class="dashboard-section section-2 bg-yellow">
-            <div class="section-content">
-              <button id="syncBtn" class="section-action-button text-huge text-black">
-                Start Smart Sync
-              </button>
-            </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 6: Efficiency Display -->
+    <div class="dashboard-section section-6 bg-white" id="efficiency-section">
+      <div class="section-content">
+        <div class="efficiency-display" id="efficiency-display" style="display: none;">
+          <div class="text-large">
+            <span id="efficiency-percentage">--</span>% Efficiency
           </div>
-          <div class="dashboard-divider"></div>
-          <div class="dashboard-section section-3 bg-white">
-            <div class="section-content">
-              <div class="text-large">Ready to sync...</div>
-            </div>
-          </div>
-          <div class="dashboard-divider"></div>
-          <div class="dashboard-section section-4 bg-white">
-            <div class="section-content">
-              <div id="progress-text" class="text-medium">Click button to start</div>
-            </div>
-          </div>
-          <div class="dashboard-divider"></div>
-          <div class="dashboard-section section-5 bg-white">
-            <div class="section-content">
-              <div id="sync-stats" style="display: none;">Stats will appear here</div>
-            </div>
-          </div>
-          <div class="dashboard-divider"></div>
-          <div class="dashboard-section section-6 bg-white">
-            <div class="section-content">
-              <div id="efficiency-display" style="display: none;">Efficiency will appear here</div>
-            </div>
-          </div>
-          <div class="dashboard-divider"></div>
-          <div class="dashboard-section section-7 bg-white log-section">
-            <div class="section-content">
-              <div id="status" class="status-display" style="display: none; height: 100%; overflow-y: auto;"></div>
-            </div>
-          </div>
-          <div class="dashboard-divider"></div>
-          <div class="dashboard-section section-8 bg-light-gray">
-            <div class="section-content">
-              <a href="/?password=${password}" class="back-button text-large">Back ↺</a>
-            </div>
-          </div>
-        </main>
-        <script src="/public/scripts/utils.js"></script>
-        <script src="/public/scripts/sync.js"></script>
-      </body>
-      </html>
-    `);
-  }
-});
+          <div class="text-small" id="efficiency-status">Calculating efficiency...</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 7: Log Area -->
+    <div class="dashboard-section section-7 bg-white log-section" id="log-section">
+      <div class="section-content">
+        <div 
+          id="status" 
+          class="status-display" 
+          role="log" 
+          aria-live="polite" 
+          aria-label="Sync progress updates"
+          style="display: none; height: 100%; overflow-y: auto;"
+        ></div>
+      </div>
+    </div>
+    
+    <div class="dashboard-divider"></div>
+    
+    <!-- Section 8: Back Button -->
+    <div class="dashboard-section section-8 bg-light-gray back-section">
+      <div class="section-content">
+        <a href="/?password={{password}}" class="back-button text-large">Back ↺</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="/public/scripts/utils.js"></script>
+  <script src="/public/scripts/sync.js"></script>
+  <script src="/public/scripts/enhancements.js"></script>
+</body>
+</html>
