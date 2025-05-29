@@ -75,6 +75,8 @@ fastify.register(require('@fastify/static'), {
 
 // PROVEN WORKING SYNC FUNCTIONS FROM DOCUMENT 3
 // MODE 1: RESET & FULL SYNC (Exact copy with proven timing)
+// Replace the performResetAndFullSync function in your api/index.js with this exact version:
+
 async function performResetAndFullSync(limit = 0) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
   console.log(`🔄 Reset & Full Sync starting - Lock ID: ${lockId}`);
