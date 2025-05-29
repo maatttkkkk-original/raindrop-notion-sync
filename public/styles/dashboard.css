@@ -601,3 +601,77 @@
     font-size: 12px;
   }
 }
+
+/* PROPER LOG FIX - Add to end of dashboard.css */
+/* Higher specificity to override existing .log-section .status-display rules */
+
+/* Override the existing log-section status-display rules for massive log */
+.dashboard-section.section-4567.log-section-massive .status-display.massive-log {
+  display: block;
+  height: 300px;
+  min-height: 300px;
+  max-height: none;
+  overflow-y: auto;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 16px;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+  font-size: 13px; /* Override the 12px from .log-section .status-display */
+  line-height: 1.4; /* Override the 1.3 from .log-section .status-display */
+}
+
+/* Style the individual sync messages with higher specificity */
+.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update {
+  display: block;
+  margin-bottom: 4px;
+  padding: 8px 12px;
+  background: white;
+  border-left: 3px solid #007bff;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: #333;
+  word-wrap: break-word;
+}
+
+/* Message type colors with high specificity */
+.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.info {
+  border-left-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.success,
+.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.added {
+  border-left-color: #22c55e;
+  background: #f0fdf4;
+}
+
+.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.processing {
+  border-left-color: #8b5cf6;
+  background: #f3e8ff;
+}
+
+.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.error,
+.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.failed {
+  border-left-color: #ef4444;
+  background: #fef2f2;
+}
+
+.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.complete {
+  border-left-color: #22c55e;
+  background: #f0fdf4;
+  font-weight: 600;
+}
+
+/* Ensure the section container is properly sized */
+.dashboard-section.section-4567.log-section-massive {
+  min-height: 350px;
+}
+
+.dashboard-section.section-4567.log-section-massive .section-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
