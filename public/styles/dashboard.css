@@ -433,3 +433,171 @@
 .dashboard-section.section-7 .sync-update {
   margin-bottom: 2px; /* Just a tiny bit of breathing room */
 }
+
+/* LOG-FOCUSED SYNC LAYOUT - Add to the end of dashboard.css */
+
+/* Make section 4567 span 4 sections worth of space */
+.dashboard-8-section .section-4567 {
+  grid-row: 8 / 16; /* Spans from grid line 8 to 16 (sections 4,5,6,7 + dividers) */
+}
+
+/* Massive log area styling */
+.log-section-massive {
+  min-height: 300px;
+  max-height: 60vh; /* Take up to 60% of viewport height */
+}
+
+.log-section-massive .section-content {
+  height: 100%;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Enhanced log display */
+.massive-log {
+  height: 100% !important;
+  min-height: 280px;
+  max-height: none;
+  overflow-y: auto;
+  background: #fafafa;
+  border: 1px solid #e1e1e1;
+  border-radius: 6px;
+  padding: 16px;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+  font-size: 14px;
+  line-height: 1.4;
+  flex: 1;
+}
+
+/* Compact status bar styling */
+.compact-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  font-size: 18px;
+}
+
+.compact-status .sync-stats {
+  color: #666;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.compact-status .text-red {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+/* Enhanced log message styling */
+.massive-log .sync-update {
+  margin-bottom: 6px;
+  padding: 10px 14px;
+  border-radius: 4px;
+  border-left: 4px solid #ddd;
+  background: white;
+  font-size: 13px;
+  line-height: 1.4;
+  word-wrap: break-word;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+/* Message type colors */
+.massive-log .sync-update.info { 
+  border-left-color: #3b82f6; 
+  background: #eff6ff;
+}
+
+.massive-log .sync-update.success,
+.massive-log .sync-update.added { 
+  border-left-color: #22c55e; 
+  background: #f0fdf4;
+}
+
+.massive-log .sync-update.updated { 
+  border-left-color: #f59e0b; 
+  background: #fffbeb;
+}
+
+.massive-log .sync-update.deleted { 
+  border-left-color: #ef4444; 
+  background: #fef2f2;
+}
+
+.massive-log .sync-update.failed,
+.massive-log .sync-update.error { 
+  border-left-color: #ef4444; 
+  background: #fef2f2;
+  font-weight: 500;
+}
+
+.massive-log .sync-update.warning { 
+  border-left-color: #f59e0b; 
+  background: #fffbeb;
+}
+
+.massive-log .sync-update.complete { 
+  border-left-color: #22c55e; 
+  background: #f0fdf4; 
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.massive-log .sync-update.analysis,
+.massive-log .sync-update.processing { 
+  border-left-color: #8b5cf6; 
+  background: #f3e8ff;
+}
+
+.massive-log .sync-update.fetching { 
+  border-left-color: #06b6d4; 
+  background: #ecfeff;
+}
+
+.massive-log .sync-update.summary { 
+  border-left-color: #10b981; 
+  background: #ecfdf5; 
+  font-weight: 600;
+}
+
+/* Better scrollbar for the massive log */
+.massive-log::-webkit-scrollbar {
+  width: 8px;
+}
+
+.massive-log::-webkit-scrollbar-track {
+  background: rgba(0,0,0,0.05);
+  border-radius: 4px;
+}
+
+.massive-log::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.2);
+  border-radius: 4px;
+}
+
+.massive-log::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.4);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .compact-status {
+    font-size: 16px;
+    gap: 12px;
+  }
+  
+  .compact-status .sync-stats {
+    font-size: 14px;
+  }
+  
+  .massive-log {
+    font-size: 12px;
+    padding: 12px;
+  }
+  
+  .massive-log .sync-update {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+}
