@@ -1,4 +1,4 @@
-// Optimized Fastify server with PROVEN WORKING SYNC + Robust EventSource
+// Complete Fastify server with PROVEN WORKING SYNC + Enhanced Loop Protection
 const path = require('path');
 const Fastify = require('fastify');
 const handlebars = require('handlebars');
@@ -40,6 +40,38 @@ let SYNC_LOCK_ID = null;
 let currentSync = null;
 const activeStreams = new Map();
 
+// ENHANCED: Loop protection globals
+let SYNC_OPERATION_LOG = new Map(); // Track operations to prevent loops
+let LAST_SYNC_STATE = null;
+
+// ENHANCED: Loop protection helper
+function trackSyncOperation(operation, itemId, itemTitle) {
+  const key = `${operation}-${itemId}`;
+  const now = Date.now();
+  
+  if (!SYNC_OPERATION_LOG.has(key)) {
+    SYNC_OPERATION_LOG.set(key, []);
+  }
+  
+  const operations = SYNC_OPERATION_LOG.get(key);
+  operations.push({ timestamp: now, title: itemTitle });
+  
+  // Keep only recent operations (last 10 minutes)
+  const tenMinutesAgo = now - (10 * 60 * 1000);
+  SYNC_OPERATION_LOG.set(key, operations.filter(op => op.timestamp > tenMinutesAgo));
+  
+  // Check for loops (same operation > 3 times in 5 minutes)
+  const fiveMinutesAgo = now - (5 * 60 * 1000);
+  const recentOps = operations.filter(op => op.timestamp > fiveMinutesAgo);
+  
+  if (recentOps.length > 3) {
+    console.warn(`🔄 Potential loop detected: ${operation} on "${itemTitle}" happened ${recentOps.length} times in 5 minutes`);
+    return true; // Indicates potential loop
+  }
+  
+  return false;
+}
+
 // Helper to broadcast to all streams
 function broadcastSSEData(data) {
   for (const [streamId, reply] of activeStreams.entries()) {
@@ -73,10 +105,7 @@ fastify.register(require('@fastify/static'), {
   prefix: '/public/'
 });
 
-// PROVEN WORKING SYNC FUNCTIONS FROM DOCUMENT 3
-// MODE 1: RESET & FULL SYNC (Exact copy with proven timing)
-// Replace the performResetAndFullSync function in your api/index.js with this exact version:
-
+// ENHANCED MODE 1: RESET & FULL SYNC with Loop Protection
 async function performResetAndFullSync(limit = 0) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
   console.log(`🔄 Reset & Full Sync starting - Lock ID: ${lockId}`);
@@ -84,8 +113,12 @@ async function performResetAndFullSync(limit = 0) {
   let createdCount = 0;
   let deletedCount = 0;
   let failedCount = 0;
+  let loopPreventionSkips = 0;
   
   try {
+    // Clear operation log for fresh start
+    SYNC_OPERATION_LOG.clear();
+    
     // Helper to send progress updates
     const sendUpdate = (message, type = '') => {
       console.log(`🔄 [${lockId}] ${message}`);
@@ -93,7 +126,12 @@ async function performResetAndFullSync(limit = 0) {
       const updateData = {
         message: `${message}`,
         type,
-        counts: { created: createdCount, deleted: deletedCount, failed: failedCount },
+        counts: { 
+          created: createdCount, 
+          deleted: deletedCount, 
+          failed: failedCount,
+          skipped: loopPreventionSkips 
+        },
         lockInfo: {
           locked: GLOBAL_SYNC_LOCK,
           lockId: lockId,
@@ -108,7 +146,7 @@ async function performResetAndFullSync(limit = 0) {
       broadcastSSEData(updateData);
     };
     
-    sendUpdate('🔄 Starting Reset & Full Sync', 'info');
+    sendUpdate('🔄 Starting Reset & Full Sync with loop protection', 'info');
     
     // === STEP 1: DELETE ALL EXISTING NOTION PAGES ===
     sendUpdate('🗑️ Fetching existing Notion pages for deletion...', 'processing');
@@ -132,6 +170,16 @@ async function performResetAndFullSync(limit = 0) {
         
         for (const page of chunk) {
           try {
+            // ENHANCED: Check for deletion loop
+            const pageTitle = page.properties?.Name?.title?.[0]?.text?.content || 'Unknown';
+            const isLoop = trackSyncOperation('delete', page.id, pageTitle);
+            
+            if (isLoop) {
+              sendUpdate(`⚠️ Skipping delete of "${pageTitle}" - potential loop detected`, 'warning');
+              loopPreventionSkips++;
+              continue;
+            }
+            
             await deleteNotionPage(page.id);
             deletedCount++;
             
@@ -156,7 +204,7 @@ async function performResetAndFullSync(limit = 0) {
         }
       }
       
-      sendUpdate(`✅ Database reset complete: ${deletedCount} pages deleted`, 'success');
+      sendUpdate(`✅ Database reset complete: ${deletedCount} pages deleted, ${loopPreventionSkips} skipped`, 'success');
     } else {
       sendUpdate('✅ Notion database is already empty', 'info');
     }
@@ -175,7 +223,10 @@ async function performResetAndFullSync(limit = 0) {
     
     if (raindrops.length === 0) {
       sendUpdate('No raindrops to sync. Process complete.', 'complete');
-      broadcastSSEData({ complete: true });
+      broadcastSSEData({ 
+        complete: true,
+        finalCounts: { created: createdCount, deleted: deletedCount, failed: failedCount, skipped: loopPreventionSkips }
+      });
       return { complete: true };
     }
     
@@ -192,6 +243,16 @@ async function performResetAndFullSync(limit = 0) {
       
       for (const item of batch) {
         try {
+          // ENHANCED: Check for creation loop
+          const itemKey = normalizeUrl(item.link) + '|' + normalizeTitle(item.title);
+          const isLoop = trackSyncOperation('create', itemKey, item.title);
+          
+          if (isLoop) {
+            sendUpdate(`⚠️ Skipping create of "${item.title}" - potential loop detected`, 'warning');
+            loopPreventionSkips++;
+            continue;
+          }
+          
           const result = await createNotionPage(item);
           if (result.success) {
             createdCount++;
@@ -227,7 +288,7 @@ async function performResetAndFullSync(limit = 0) {
     const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
     
     sendUpdate(`🎉 Reset & Full Sync completed in ${duration}s!`, 'complete');
-    sendUpdate(`📊 Results: ${createdCount} created, ${deletedCount} deleted, ${failedCount} failed`, 'summary');
+    sendUpdate(`📊 Results: ${createdCount} created, ${deletedCount} deleted, ${failedCount} failed, ${loopPreventionSkips} loop-prevention skips`, 'summary');
     
     console.log(`✅ [${lockId}] RESET & FULL SYNC COMPLETE: ${duration}s`);
     
@@ -238,7 +299,12 @@ async function performResetAndFullSync(limit = 0) {
     
     broadcastSSEData({ 
       complete: true,
-      finalCounts: { created: createdCount, deleted: deletedCount, failed: failedCount },
+      finalCounts: { 
+        created: createdCount, 
+        deleted: deletedCount, 
+        failed: failedCount, 
+        skipped: loopPreventionSkips 
+      },
       mode: 'reset',
       duration
     });
@@ -256,7 +322,7 @@ async function performResetAndFullSync(limit = 0) {
   }
 }
 
-// MODE 2: SMART INCREMENTAL SYNC (Exact copy with proven timing)
+// ENHANCED MODE 2: SMART INCREMENTAL SYNC with Loop Protection
 async function performSmartIncrementalSync(daysBack = 30) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
   console.log(`🧠 Smart Incremental Sync starting - Lock ID: ${lockId}, checking last ${daysBack} days`);
@@ -265,8 +331,12 @@ async function performSmartIncrementalSync(daysBack = 30) {
   let updatedCount = 0;
   let skippedCount = 0;
   let failedCount = 0;
+  let loopPreventionSkips = 0;
   
   try {
+    // Clear operation log for fresh start
+    SYNC_OPERATION_LOG.clear();
+    
     // Helper to send progress updates
     const sendUpdate = (message, type = '') => {
       console.log(`🧠 [${lockId}] ${message}`);
@@ -274,7 +344,12 @@ async function performSmartIncrementalSync(daysBack = 30) {
       const updateData = {
         message: `${message}`,
         type,
-        counts: { added: addedCount, updated: updatedCount, skipped: skippedCount, failed: failedCount },
+        counts: { 
+          added: addedCount, 
+          updated: updatedCount, 
+          skipped: skippedCount + loopPreventionSkips, 
+          failed: failedCount 
+        },
         lockInfo: {
           locked: GLOBAL_SYNC_LOCK,
           lockId: lockId,
@@ -289,7 +364,7 @@ async function performSmartIncrementalSync(daysBack = 30) {
       broadcastSSEData(updateData);
     };
     
-    sendUpdate(`🧠 Starting Smart Incremental Sync (last ${daysBack} days)`, 'info');
+    sendUpdate(`🧠 Starting Smart Incremental Sync with loop protection (last ${daysBack} days)`, 'info');
     
     // === STEP 1: GET RECENT RAINDROPS (TEMPORAL FILTERING) ===
     sendUpdate(`📡 Fetching recent Raindrop bookmarks (last ${daysBack} days)...`, 'fetching');
@@ -427,6 +502,16 @@ async function performSmartIncrementalSync(daysBack = 30) {
       
       for (const item of itemsToAdd) {
         try {
+          // ENHANCED: Check for creation loop
+          const itemKey = normalizeUrl(item.link) + '|' + normalizeTitle(item.title);
+          const isLoop = trackSyncOperation('create', itemKey, item.title);
+          
+          if (isLoop) {
+            sendUpdate(`⚠️ Skipping create of "${item.title}" - potential loop detected`, 'warning');
+            loopPreventionSkips++;
+            continue;
+          }
+          
           const result = await createNotionPage(item);
           if (result.success) {
             sendUpdate(`✅ Created: "${item.title}"`, 'added');
@@ -453,6 +538,15 @@ async function performSmartIncrementalSync(daysBack = 30) {
       
       for (const { item, existingPage } of itemsToUpdate) {
         try {
+          // ENHANCED: Check for update loop
+          const isLoop = trackSyncOperation('update', existingPage.id, item.title);
+          
+          if (isLoop) {
+            sendUpdate(`⚠️ Skipping update of "${item.title}" - potential loop detected`, 'warning');
+            loopPreventionSkips++;
+            continue;
+          }
+          
           const success = await updateNotionPage(existingPage.id, item);
           if (success) {
             sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
@@ -478,7 +572,7 @@ async function performSmartIncrementalSync(daysBack = 30) {
     
     sendUpdate(`🎉 Smart Incremental Sync completed in ${duration}s!`, 'complete');
     sendUpdate(`📊 Efficiency: Only checked ${recentRaindrops.length} recent items instead of all bookmarks`, 'info');
-    sendUpdate(`📈 Results: ${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped, ${failedCount} failed`, 'summary');
+    sendUpdate(`📈 Results: ${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped, ${failedCount} failed, ${loopPreventionSkips} loop-prevention skips`, 'summary');
     
     console.log(`✅ [${lockId}] SMART INCREMENTAL COMPLETE: ${duration}s, ${efficiency}% efficiency`);
     
@@ -489,7 +583,12 @@ async function performSmartIncrementalSync(daysBack = 30) {
     
     broadcastSSEData({ 
       complete: true,
-      finalCounts: { added: addedCount, updated: updatedCount, skipped: skippedCount, failed: failedCount },
+      finalCounts: { 
+        added: addedCount, 
+        updated: updatedCount, 
+        skipped: skippedCount + loopPreventionSkips, 
+        failed: failedCount 
+      },
       efficiency: { itemsProcessed: totalOperations, totalItems: recentRaindrops.length, percentage: efficiency, duration },
       mode: 'incremental'
     });
@@ -578,8 +677,7 @@ fastify.get('/sync', async (req, reply) => {
   });
 });
 
-// ULTRA-MINIMAL /sync-stream route - Replace in your api/index.js
-
+// ENHANCED /sync-stream route with better error handling and heartbeat
 fastify.get('/sync-stream', async (req, reply) => {
   const password = req.query.password || '';
   const mode = req.query.mode || 'smart';
@@ -611,17 +709,44 @@ fastify.get('/sync-stream', async (req, reply) => {
     }
   };
 
-  console.log(`🔗 Sync request: ${mode}`);
-  send({ message: '🔗 Connected', type: 'info' });
+  console.log(`🔗 Sync request: ${mode} (Stream ID: ${streamId})`);
+  send({ message: '🔗 Connected to sync stream', type: 'info' });
+
+  // Setup heartbeat to keep connection alive
+  const heartbeatInterval = setInterval(() => {
+    send({ type: 'heartbeat', timestamp: Date.now() });
+  }, 30000); // Every 30 seconds
 
   // Check if sync already running
   if (GLOBAL_SYNC_LOCK) {
     send({ message: '⏸️ Sync already running, please wait...', type: 'waiting' });
+    
+    // Clean up this stream since we can't start sync
+    clearInterval(heartbeatInterval);
+    setTimeout(() => {
+      activeStreams.delete(streamId);
+      try {
+        reply.raw.end();
+      } catch (e) {
+        // Connection already closed
+      }
+    }, 5000);
     return;
   }
 
-  // Set simple lock
+  // Set enhanced lock with tracking
   GLOBAL_SYNC_LOCK = true;
+  SYNC_START_TIME = Date.now();
+  SYNC_LOCK_ID = streamId;
+  
+  currentSync = {
+    lockId: streamId,
+    mode: mode,
+    startTime: SYNC_START_TIME,
+    isRunning: true,
+    completed: false,
+    counts: {}
+  };
 
   // Choose and start sync
   let syncPromise;
@@ -642,6 +767,11 @@ fastify.get('/sync-stream', async (req, reply) => {
     .finally(() => {
       // Clean up
       GLOBAL_SYNC_LOCK = false;
+      SYNC_START_TIME = null;
+      SYNC_LOCK_ID = null;
+      currentSync = null;
+      
+      clearInterval(heartbeatInterval);
       activeStreams.delete(streamId);
       
       try {
@@ -651,11 +781,115 @@ fastify.get('/sync-stream', async (req, reply) => {
       }
     });
 
-  // Handle client disconnect
+    // Handle client disconnect
   req.raw.on('close', () => {
     console.log(`🔌 Client disconnected: ${streamId}`);
+    clearInterval(heartbeatInterval);
     activeStreams.delete(streamId);
     // Note: Don't stop sync - let it complete on server
+  });
+});
+
+// Health check endpoint
+fastify.get('/health', async (req, reply) => {
+  const health = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    sync: {
+      locked: GLOBAL_SYNC_LOCK,
+      lockId: SYNC_LOCK_ID,
+      activeStreams: activeStreams.size,
+      currentSync: currentSync ? {
+        mode: currentSync.mode,
+        startTime: currentSync.startTime,
+        duration: Date.now() - currentSync.startTime,
+        isRunning: currentSync.isRunning,
+        completed: currentSync.completed
+      } : null
+    },
+    operationLog: {
+      size: SYNC_OPERATION_LOG.size,
+      operations: Array.from(SYNC_OPERATION_LOG.keys()).slice(0, 5) // Show first 5 for debugging
+    }
+  };
+  
+  reply.send(health);
+});
+
+// Debug endpoint for admin
+fastify.get('/debug', async (req, reply) => {
+  const password = req.query.password || '';
+  
+  if (!validatePassword(password)) {
+    reply.code(401).send({ error: 'Unauthorized' });
+    return;
+  }
+  
+  const debug = {
+    sync: {
+      locked: GLOBAL_SYNC_LOCK,
+      lockId: SYNC_LOCK_ID,
+      startTime: SYNC_START_TIME,
+      activeStreams: activeStreams.size,
+      currentSync: currentSync
+    },
+    operationLog: {
+      size: SYNC_OPERATION_LOG.size,
+      recentOperations: Array.from(SYNC_OPERATION_LOG.entries()).slice(-10)
+    },
+    environment: {
+      nodeVersion: process.version,
+      platform: process.platform,
+      memoryUsage: process.memoryUsage(),
+      uptime: process.uptime()
+    }
+  };
+  
+  reply.send(debug);
+});
+
+// Reset operation log endpoint (for debugging)
+fastify.post('/reset-log', async (req, reply) => {
+  const password = req.query.password || '';
+  
+  if (!validatePassword(password)) {
+    reply.code(401).send({ error: 'Unauthorized' });
+    return;
+  }
+  
+  const oldSize = SYNC_OPERATION_LOG.size;
+  SYNC_OPERATION_LOG.clear();
+  
+  reply.send({ 
+    message: 'Operation log cleared',
+    oldSize: oldSize,
+    newSize: SYNC_OPERATION_LOG.size
+  });
+});
+
+// Error handler
+fastify.setErrorHandler((error, request, reply) => {
+  console.error('Fastify error:', error);
+  
+  const errorResponse = {
+    error: 'Internal Server Error',
+    message: error.message,
+    timestamp: new Date().toISOString()
+  };
+  
+  if (process.env.NODE_ENV === 'development') {
+    errorResponse.stack = error.stack;
+  }
+  
+  reply.status(500).send(errorResponse);
+});
+
+// 404 handler
+fastify.setNotFoundHandler((request, reply) => {
+  reply.status(404).send({
+    error: 'Not Found',
+    message: `Route ${request.method} ${request.url} not found`,
+    timestamp: new Date().toISOString()
   });
 });
 
