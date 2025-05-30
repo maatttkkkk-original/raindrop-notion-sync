@@ -1,7 +1,6 @@
 /**
- * FIXED Sync Manager - No Deletions Version
- * Issue 1: Proper log display for massive-log area
- * Issue 2: No deletion tracking or counters
+ * CLEAN Sync Manager - Batch Progress Updates
+ * Handles: XX/ZZ complete updates, progress bar, stop button
  */
 
 class SyncManager {
@@ -10,13 +9,6 @@ class SyncManager {
     this.syncInProgress = false;
     this.connectionRetries = 0;
     this.maxRetries = 3;
-    this.messageCount = 0;
-    this.maxMessages = 100;
-    
-    // Loop protection (no deletion tracking)
-    this.lastSyncType = null;
-    this.consecutiveErrors = 0;
-    this.maxConsecutiveErrors = 5;
     
     this.init();
   }
@@ -24,19 +16,27 @@ class SyncManager {
   init() {
     Utils.ready(() => {
       this.bindEvents();
-      this.setupLogArea();
-      console.log('🚀 Fixed SyncManager initialized (no deletions)');
+      this.setupUI();
+      console.log('🚀 Clean SyncManager initialized');
     });
   }
 
   bindEvents() {
     const syncBtn = document.getElementById('syncBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    
     if (syncBtn) {
       syncBtn.addEventListener('click', (e) => {
         e.preventDefault();
         this.startSync();
       });
-      console.log('✅ Sync button bound');
+    }
+    
+    if (stopBtn) {
+      stopBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.stopSync();
+      });
     }
 
     window.addEventListener('beforeunload', () => {
@@ -44,50 +44,29 @@ class SyncManager {
     });
   }
 
-  setupLogArea() {
-    const status = document.getElementById('status');
-    if (status) {
-        // Clear content but maintain visibility
-        status.innerHTML = '';
-        status.style.display = 'block';
-        status.style.visibility = 'visible';
-        status.style.opacity = '1';
-        
-        // Ensure parent sections are visible
-        const logSection = document.getElementById('log-section');
-        if (logSection) {
-            logSection.style.display = 'block';
-            logSection.style.visibility = 'visible';
-            logSection.style.opacity = '1';
-        }
-        
-        console.log('✅ Log area initialized with visibility (no deletion tracking)');
-    }
+  setupUI() {
+    this.updateProgressBar(0);
+    this.hideStopButton();
   }
 
   startSync() {
     if (this.syncInProgress) {
-      this.showStatus('⚠️ Sync already running', 'warning');
       return;
     }
-
-    // Reset error tracking
-    this.consecutiveErrors = 0;
-    this.messageCount = 0;
 
     const urlParams = new URLSearchParams(window.location.search);
     const password = urlParams.get('password');
     const mode = urlParams.get('mode') || 'smart';
 
     if (!password) {
-      this.showStatus('❌ Password required', 'error');
+      alert('Password required');
       return;
     }
 
     this.syncInProgress = true;
-    this.lastSyncType = mode;
-    this.updateButton(true);
-    this.showLogArea();
+    this.updateSyncButton(true);
+    this.showStopButton();
+    this.updateProgressText('Starting sync...');
     
     const syncUrl = `/sync-stream?password=${encodeURIComponent(password)}&mode=${mode}&_t=${Date.now()}`;
     this.connectToSync(syncUrl);
@@ -101,7 +80,6 @@ class SyncManager {
     
     this.evtSource.onopen = () => {
       console.log('✅ Connected');
-      this.showStatus('🔗 Connected to sync stream', 'info');
       this.connectionRetries = 0;
     };
 
@@ -111,21 +89,15 @@ class SyncManager {
         this.handleMessage(data);
       } catch (error) {
         console.error('Parse error:', error);
-        this.consecutiveErrors++;
-        if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
-          this.showStatus('❌ Too many parse errors, stopping sync', 'error');
-          this.stopSync();
-        }
       }
     };
 
     this.evtSource.onerror = () => {
       console.error('❌ Connection error');
-      this.consecutiveErrors++;
       
-      if (this.connectionRetries < this.maxRetries && this.consecutiveErrors < this.maxConsecutiveErrors) {
+      if (this.connectionRetries < this.maxRetries) {
         this.connectionRetries++;
-        this.showStatus(`🔄 Reconnecting... (${this.connectionRetries}/${this.maxRetries})`, 'warning');
+        this.updateProgressText(`Reconnecting... (${this.connectionRetries}/${this.maxRetries})`);
         
         setTimeout(() => {
           if (this.syncInProgress) {
@@ -133,7 +105,7 @@ class SyncManager {
           }
         }, 2000 * this.connectionRetries);
       } else {
-        this.showStatus('❌ Connection failed or too many errors', 'error');
+        this.updateProgressText('Connection failed');
         this.stopSync();
       }
     };
@@ -143,210 +115,96 @@ class SyncManager {
     // Skip heartbeat messages
     if (data.type === 'heartbeat') return;
     
-    // Reset error counter on successful message
-    this.consecutiveErrors = 0;
-    
-    // Handle new progress messages
+    // Handle progress messages (XX/ZZ complete)
     if (data.type === 'progress') {
       this.updateProgress(data.completed, data.total, data.percentage);
       return;
     }
     
-    // Handle regular message content
+    // Handle other messages (start, status, complete, error)
     if (data.message) {
-      this.showStatus(data.message, data.type || 'info');
-    }
-    
-    // Update stats if available (no deletion counters)
-    if (data.counts) {
-      this.updateStats(data.counts);
+      this.updateProgressText(data.message);
     }
     
     // Handle completion
     if (data.complete) {
-      this.showStatus('🎉 Sync completed!', 'complete');
-      this.syncInProgress = false;
-      this.updateButton(false);
-      this.cleanup();
-      
-      // Show final stats (no deletions)
-      if (data.finalCounts) {
-        this.showFinalSummary(data.finalCounts, data.mode, data.duration);
-      }
-    }
-    
-    // Handle errors
-    if (data.type === 'error' || data.type === 'failed') {
-      this.consecutiveErrors++;
-      if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
-        this.showStatus('❌ Too many consecutive errors, stopping sync', 'error');
-        this.stopSync();
-      }
+      this.handleCompletion(data);
     }
   }
 
-  showStatus(message, type = 'info') {
-    const status = document.getElementById('status');
-    if (!status) return;
-
-    // Create update element
-    const update = document.createElement('div');
-    update.className = `sync-update ${type}`;
-    
-    // Add timestamp
-    const now = new Date().toLocaleTimeString();
-    update.textContent = `[${now}] ${message}`;
-    
-    // Important: Append BEFORE any style updates
-    status.appendChild(update);
-    
-    // Ensure log area is visible
-    status.closest('.log-section-massive').style.display = 'block';
-    
-    // Scroll to new message
-    update.scrollIntoView({ behavior: 'smooth' });
-  }
-
+  // CORE: Update XX/ZZ complete every 20 bookmarks
   updateProgress(completed, total, percentage) {
-    // Update progress text in compact status
-    const progressText = document.getElementById('progress-text');
-    if (progressText) {
-      progressText.textContent = `${completed}/${total} complete (${percentage}%)`;
-    }
+    // Update progress text: "20/1300 complete"
+    this.updateProgressText(`${completed}/${total} complete`);
     
-    // Update progress in stats area
-    const syncStats = document.getElementById('sync-stats');
-    if (syncStats) {
-      syncStats.style.display = 'inline';
-    }
+    // Update progress bar width
+    this.updateProgressBar(percentage);
     
-    // Log progress to console and status area
-    console.log(`📊 Progress: ${completed}/${total} bookmarks (${percentage}%)`);
-    
-    // Add a progress message to the log (less frequent than individual bookmarks)
-    if (completed % 100 === 0 || completed === total) {
-      this.showStatus(`📊 Progress: ${completed}/${total} bookmarks synced (${percentage}%)`, 'progress');
+    console.log(`📊 Progress: ${completed}/${total} (${percentage}%)`);
+  }
+
+  updateProgressText(text) {
+    const progressElement = document.getElementById('progress-text');
+    if (progressElement) {
+      progressElement.textContent = text;
     }
   }
 
-  // Show/hide stats (no deletion counters)
-  updateStats(counts) {
-    const stats = document.getElementById('sync-stats');
-    if (stats) {
-        stats.classList.remove('hidden');
-        // Update count spans (no deleted counter)...
+  updateProgressBar(percentage) {
+    const progressBar = document.getElementById('progress-bar');
+    if (progressBar) {
+      progressBar.style.width = `${percentage}%`;
     }
   }
 
-  limitMessages() {
-    const status = document.getElementById('status');
-    if (!status) return;
-    
-    const messages = status.children;
-    while (messages.length > this.maxMessages) {
-      const oldMessage = messages[0];
-      status.removeChild(oldMessage);
-      this.messageCount--;
-    }
-  }
-
-  scrollToBottom() {
-    const status = document.getElementById('status');
-    if (!status) return;
-    
-    // Use multiple scroll methods for better compatibility
-    try {
-      status.scrollTop = status.scrollHeight;
-      
-      // Also try scrollIntoView on last message
-      const lastMessage = status.lastElementChild;
-      if (lastMessage) {
-        lastMessage.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      }
-    } catch (error) {
-      console.warn('Scroll error:', error);
-    }
-  }
-
-  showLogArea() {
-    const status = document.getElementById('status');
-    const logSection = document.getElementById('log-section');
-    const compactSection = document.getElementById('compact-status-section');
-    
-    if (status) {
-      status.style.display = 'block';
-    }
-    
-    // Show the compact stats area as well
-    if (compactSection) {
-      const syncStats = document.getElementById('sync-stats');
-      if (syncStats) {
-        syncStats.style.display = 'inline';
-      }
-    }
-    
-    console.log('📊 Log areas activated (no deletion tracking)');
-  }
-
-  updateStats(counts) {
-    // Updated to handle new count structure (no deletions)
-    const elements = {
-      'added-count': counts.added || counts.created || 0,
-      'updated-count': counts.updated || 0,
-      'failed-count': counts.failed || 0
-    };
-    
-    Object.entries(elements).forEach(([id, value]) => {
-      const element = document.getElementById(id);
-      if (element) {
-        element.textContent = value;
-      }
-    });
-    
-    // Show stats container
-    const syncStats = document.getElementById('sync-stats');
-    if (syncStats) {
-      syncStats.style.display = 'inline';
-    }
-  }
-
-  showFinalSummary(counts, mode, duration) {
-    // Updated final summary (no deletions)
-    const summary = [
-      `📊 Final Results:`,
-      `• Added: ${counts.added || counts.created || 0}`,
-      `• Updated: ${counts.updated || 0}`,
-      `• Failed: ${counts.failed || 0}`,
-      duration ? `⏱️ Duration: ${duration}s` : '',
-      `🔄 Mode: ${mode || 'unknown'}`
-    ].filter(Boolean).join(' ');
-    
-    this.showStatus(summary, 'summary');
-  }
-
-  updateButton(running) {
+  updateSyncButton(running) {
     const btn = document.getElementById('syncBtn');
     if (!btn) return;
     
-    btn.disabled = running;
-    
-    const mode = new URLSearchParams(window.location.search).get('mode') || 'smart';
-    
     if (running) {
-      btn.textContent = mode === 'full' ? 'Full Sync Running...' : 'Smart Sync Running...';
-      btn.style.opacity = '0.6';
+      btn.textContent = 'Syncing...';
+      btn.disabled = true;
     } else {
+      const mode = new URLSearchParams(window.location.search).get('mode') || 'smart';
       btn.textContent = mode === 'full' ? 'Start Full Sync' : 'Start Smart Sync';
-      btn.style.opacity = '1';
+      btn.disabled = false;
+    }
+  }
+
+  showStopButton() {
+    const stopBtn = document.getElementById('stopBtn');
+    if (stopBtn) {
+      stopBtn.style.display = 'block';
+    }
+  }
+
+  hideStopButton() {
+    const stopBtn = document.getElementById('stopBtn');
+    if (stopBtn) {
+      stopBtn.style.display = 'none';
+    }
+  }
+
+  handleCompletion(data) {
+    this.syncInProgress = false;
+    this.updateSyncButton(false);
+    this.hideStopButton();
+    this.updateProgressText('Sync completed!');
+    this.updateProgressBar(100);
+    this.cleanup();
+    
+    if (data.finalCounts) {
+      console.log('📊 Final results:', data.finalCounts);
     }
   }
 
   stopSync() {
     console.log('🛑 Stopping sync');
     this.syncInProgress = false;
-    this.updateButton(false);
+    this.updateSyncButton(false);
+    this.hideStopButton();
+    this.updateProgressText('Sync stopped');
     this.cleanup();
-    this.showStatus('🛑 Sync stopped', 'warning');
   }
 
   cleanup() {
@@ -355,66 +213,25 @@ class SyncManager {
       this.evtSource = null;
     }
     this.connectionRetries = 0;
-    console.log('🧹 Cleanup completed');
   }
 
-  // Public methods for external access
+  // Public API
   getStatus() {
     return {
       running: this.syncInProgress,
-      connected: !!this.evtSource,
-      retries: this.connectionRetries,
-      messages: this.messageCount,
-      errors: this.consecutiveErrors
+      connected: !!this.evtSource
     };
-  }
-
-  // Manual stop method
-  forceStop() {
-    this.stopSync();
   }
 }
 
-// Initialize only once and make globally available
+// Initialize clean sync manager
 Utils.ready(() => {
   if (document.getElementById('syncBtn')) {
-    // Clean up any existing instance
     if (window.syncManager) {
       window.syncManager.cleanup();
     }
     
-    // Create new instance
     window.syncManager = new SyncManager();
-    
-    // Debug helpers
-    window.syncDebug = () => console.log(window.syncManager.getStatus());
-    window.syncStop = () => window.syncManager.forceStop();
-    
-    console.log('🎯 Fixed SyncManager ready (no deletions)');
+    console.log('🎯 Clean SyncManager ready');
   }
-});
-
-// Add after the SyncManager class definition
-window.addEventListener('error', (event) => {
-    console.error('Global error:', event.error);
-});
-
-// Debug any mutation changes to status
-const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-        if (mutation.type === 'childList') {
-            console.log('Status children changed:', {
-                added: mutation.addedNodes.length,
-                removed: mutation.removedNodes.length,
-                total: document.getElementById('status')?.children.length
-            });
-        }
-    });
-});
-
-Utils.ready(() => {
-    const status = document.getElementById('status');
-    if (status) {
-        observer.observe(status, { childList: true });
-    }
 });

@@ -484,3 +484,74 @@ background: #f8f9fa;
 white-space: pre-wrap;
 word-break: break-word;
 }
+
+/* ===== CLEAN PROGRESS BAR & STOP BUTTON ===== */
+
+/* Progress Bar System */
+.progress-section {
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #ffff00;
+  width: 0%;
+  transition: width 0.3s ease;
+  z-index: 1;
+}
+
+.progress-content {
+  position: relative;
+  z-index: 2;
+  background: transparent;
+}
+
+/* Stop Button */
+.stop-button {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: #ff0000;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 1000;
+  display: none;
+  font-family: var(--font-primary);
+  transition: background 0.2s ease;
+}
+
+.stop-button:hover {
+  background: #cc0000;
+}
+
+.stop-button:active {
+  background: #990000;
+}
+
+/* Responsive Stop Button */
+@media (max-width: 768px) {
+  .stop-button {
+    top: 10px;
+    right: 10px;
+    padding: 10px 20px;
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stop-button {
+    top: 5px;
+    right: 5px;
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+}

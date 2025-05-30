@@ -105,7 +105,7 @@ fastify.register(require('@fastify/static'), {
   prefix: '/public/'
 });
 
-// ENHANCED MODE 1: FULL SYNC with Loop Protection (NO DELETIONS)
+// ENHANCED MODE 1: FULL SYNC with Clean Batch Progress (NO DELETIONS)
 async function performFullSync(limit = 0) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
   console.log(`🔄 Full Sync starting - Lock ID: ${lockId} (NO DELETIONS)`);
@@ -119,7 +119,7 @@ async function performFullSync(limit = 0) {
     // Clear operation log for fresh start
     SYNC_OPERATION_LOG.clear();
     
-    // Helper to send progress updates
+    // Helper to send regular status updates (start/fetch phases)
     const sendUpdate = (message, type = '') => {
       console.log(`🔄 [${lockId}] ${message}`);
       
@@ -146,7 +146,7 @@ async function performFullSync(limit = 0) {
       broadcastSSEData(updateData);
     };
     
-    // Helper to send batch progress updates (every 20 items)
+    // CLEAN: Helper to send batch progress updates (every 20 items)
     const sendProgressUpdate = (completed, total) => {
       const percentage = Math.round((completed / total) * 100);
       console.log(`📊 [${lockId}] Progress: ${completed}/${total} (${percentage}%)`);
@@ -299,8 +299,8 @@ async function performFullSync(limit = 0) {
           
           totalProcessed++;
           
-          // Send progress update every 20 items
-          if (totalProcessed % 20 === 0) {
+          // CLEAN: Send progress update every 20 items
+          if (totalProcessed % 20 === 0 || totalProcessed === raindrops.length) {
             sendProgressUpdate(totalProcessed, raindrops.length);
           }
           
