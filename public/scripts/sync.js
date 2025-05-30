@@ -146,7 +146,13 @@ class SyncManager {
     // Reset error counter on successful message
     this.consecutiveErrors = 0;
     
-    // Handle message content
+    // Handle new progress messages
+    if (data.type === 'progress') {
+      this.updateProgress(data.completed, data.total, data.percentage);
+      return;
+    }
+    
+    // Handle regular message content
     if (data.message) {
       this.showStatus(data.message, data.type || 'info');
     }
@@ -199,6 +205,28 @@ class SyncManager {
     
     // Scroll to new message
     update.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  updateProgress(completed, total, percentage) {
+    // Update progress text in compact status
+    const progressText = document.getElementById('progress-text');
+    if (progressText) {
+      progressText.textContent = `${completed}/${total} complete (${percentage}%)`;
+    }
+    
+    // Update progress in stats area
+    const syncStats = document.getElementById('sync-stats');
+    if (syncStats) {
+      syncStats.style.display = 'inline';
+    }
+    
+    // Log progress to console and status area
+    console.log(`📊 Progress: ${completed}/${total} bookmarks (${percentage}%)`);
+    
+    // Add a progress message to the log (less frequent than individual bookmarks)
+    if (completed % 100 === 0 || completed === total) {
+      this.showStatus(`📊 Progress: ${completed}/${total} bookmarks synced (${percentage}%)`, 'progress');
+    }
   }
 
   // Show/hide stats (no deletion counters)
