@@ -204,13 +204,13 @@ async function performFullSync(limit = 0) {
     // === STEP 4: PROCESS ALL RAINDROPS (CREATE + UPDATE ONLY) ===
     sendUpdate(`📝 Processing ${raindrops.length} bookmarks (create + update only)...`, 'processing');
     
-    // Process in batches using PROVEN WORKING TIMINGS
+    // Create in batches using PROVEN WORKING TIMINGS from your working file
     const batches = chunkArray(raindrops, 10); // 10 items per batch (proven to work)
     const batchCount = batches.length;
     
     for (let i = 0; i < batchCount; i++) {
       const batch = batches[i];
-      sendUpdate(`📝 Processing batch ${i + 1}/${batchCount} (${batch.length} items)`, 'processing');
+      sendUpdate(`📝 Processing batch ${i + 1}/${batchCount} (${batch.length} pages)`, 'processing');
       
       for (const item of batch) {
         try {
@@ -220,7 +220,7 @@ async function performFullSync(limit = 0) {
           const existingPage = notionUrlMap.get(normUrl) || notionTitleMap.get(normTitle);
           
           if (existingPage) {
-            // UPDATE EXISTING PAGE
+            // UPDATE EXISTING PAGE - using your working error handling
             const isLoop = trackSyncOperation('update', existingPage.id, item.title);
             
             if (isLoop) {
@@ -229,16 +229,26 @@ async function performFullSync(limit = 0) {
               continue;
             }
             
-            const success = await updateNotionPage(existingPage.id, item);
-            if (success) {
-              updatedCount++;
-              sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
-            } else {
-              sendUpdate(`❌ Failed to update: "${item.title}"`, 'failed');
+            try {
+              const success = await updateNotionPage(existingPage.id, item);
+              if (success) {
+                updatedCount++;
+                sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
+                
+                if (updatedCount % 20 === 0) {
+                  sendUpdate(`📊 Progress: ${updatedCount} pages updated`, 'info');
+                }
+              } else {
+                sendUpdate(`❌ Failed to update: "${item.title}"`, 'failed');
+                failedCount++;
+              }
+            } catch (updateError) {
+              sendUpdate(`❌ Error updating "${item.title}": ${updateError.message}`, 'failed');
               failedCount++;
+              await new Promise(resolve => setTimeout(resolve, 400));
             }
           } else {
-            // CREATE NEW PAGE
+            // CREATE NEW PAGE - using your working API call structure
             const itemKey = normalizeUrl(item.link) + '|' + normalizeTitle(item.title);
             const isLoop = trackSyncOperation('create', itemKey, item.title);
             
@@ -248,21 +258,28 @@ async function performFullSync(limit = 0) {
               continue;
             }
             
-            const result = await createNotionPage(item);
-            if (result.success) {
-              createdCount++;
-              sendUpdate(`✅ Created: "${item.title}"`, 'added');
-            } else {
-              sendUpdate(`❌ Failed to create: "${item.title}"`, 'failed');
+            try {
+              const result = await createNotionPage(item);
+              if (result.success) {
+                createdCount++;
+                sendUpdate(`✅ Created: "${item.title}"`, 'added');
+                
+                if (createdCount % 20 === 0) {
+                  sendUpdate(`📊 Progress: ${createdCount}/${raindrops.length} pages created`, 'info');
+                }
+              } else {
+                sendUpdate(`❌ Failed to create: "${item.title}"`, 'failed');
+                failedCount++;
+              }
+            } catch (createError) {
+              sendUpdate(`❌ Error creating "${item.title}": ${createError.message}`, 'failed');
               failedCount++;
+              // Longer delay on error
+              await new Promise(resolve => setTimeout(resolve, 400));
             }
           }
           
-          if ((createdCount + updatedCount) % 20 === 0) {
-            sendUpdate(`📊 Progress: ${createdCount} created, ${updatedCount} updated`, 'info');
-          }
-          
-          // PROVEN WORKING DELAY: 200ms between operations
+          // PROVEN WORKING DELAY: 200ms between operations (from your working file)
           await new Promise(resolve => setTimeout(resolve, 200));
           
         } catch (error) {
@@ -273,7 +290,7 @@ async function performFullSync(limit = 0) {
         }
       }
       
-      // PROVEN WORKING DELAY: 2000ms between batches
+      // PROVEN WORKING DELAY: 2000ms between batches (from your working file)
       if (i < batchCount - 1) {
         sendUpdate(`⏳ Batch ${i + 1} complete, waiting before next batch...`, 'info');
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -492,7 +509,7 @@ async function performSmartIncrementalSync(daysBack = 30) {
     
     // === STEP 4: PROCESS OPERATIONS (CREATE + UPDATE ONLY) ===
     
-    // Process new items
+    // Process new items - using your working API call structure
     if (itemsToAdd.length > 0) {
       sendUpdate(`➕ Creating ${itemsToAdd.length} new pages...`, 'processing');
       
@@ -508,16 +525,23 @@ async function performSmartIncrementalSync(daysBack = 30) {
             continue;
           }
           
-          const result = await createNotionPage(item);
-          if (result.success) {
-            sendUpdate(`✅ Created: "${item.title}"`, 'added');
-            addedCount++;
-          } else {
-            sendUpdate(`❌ Failed to create: "${item.title}"`, 'failed');
+          // Use your working API call structure
+          try {
+            const result = await createNotionPage(item);
+            if (result.success) {
+              sendUpdate(`✅ Created: "${item.title}"`, 'added');
+              addedCount++;
+            } else {
+              sendUpdate(`❌ Failed to create: "${item.title}"`, 'failed');
+              failedCount++;
+            }
+          } catch (createError) {
+            sendUpdate(`❌ Error creating "${item.title}": ${createError.message}`, 'failed');
             failedCount++;
+            await new Promise(resolve => setTimeout(resolve, 400));
           }
           
-          // PROVEN WORKING DELAY: 200ms between operations
+          // PROVEN WORKING DELAY: 200ms between operations (from your working file)
           await new Promise(resolve => setTimeout(resolve, 200));
           
         } catch (error) {
@@ -528,7 +552,7 @@ async function performSmartIncrementalSync(daysBack = 30) {
       }
     }
     
-    // Process updates
+    // Process updates - using your working error handling
     if (itemsToUpdate.length > 0) {
       sendUpdate(`🔄 Updating ${itemsToUpdate.length} existing pages...`, 'processing');
       
@@ -543,16 +567,23 @@ async function performSmartIncrementalSync(daysBack = 30) {
             continue;
           }
           
-          const success = await updateNotionPage(existingPage.id, item);
-          if (success) {
-            sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
-            updatedCount++;
-          } else {
-            sendUpdate(`❌ Failed to update: "${item.title}"`, 'failed');
+          // Use your working API call structure
+          try {
+            const success = await updateNotionPage(existingPage.id, item);
+            if (success) {
+              sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
+              updatedCount++;
+            } else {
+              sendUpdate(`❌ Failed to update: "${item.title}"`, 'failed');
+              failedCount++;
+            }
+          } catch (updateError) {
+            sendUpdate(`❌ Error updating "${item.title}": ${updateError.message}`, 'failed');
             failedCount++;
+            await new Promise(resolve => setTimeout(resolve, 400));
           }
           
-          // PROVEN WORKING DELAY: 200ms between operations
+          // PROVEN WORKING DELAY: 200ms between operations (from your working file)
           await new Promise(resolve => setTimeout(resolve, 200));
           
         } catch (error) {
