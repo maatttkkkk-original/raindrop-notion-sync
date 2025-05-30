@@ -146,6 +146,31 @@ async function performFullSync(limit = 0) {
       broadcastSSEData(updateData);
     };
     
+    // Helper to send batch progress updates (every 20 items)
+    const sendProgressUpdate = (completed, total) => {
+      const percentage = Math.round((completed / total) * 100);
+      console.log(`📊 [${lockId}] Progress: ${completed}/${total} (${percentage}%)`);
+      
+      const progressData = {
+        type: 'progress',
+        completed: completed,
+        total: total,
+        percentage: percentage,
+        counts: { 
+          created: createdCount, 
+          updated: updatedCount, 
+          failed: failedCount,
+          skipped: loopPreventionSkips 
+        }
+      };
+      
+      if (currentSync) {
+        currentSync.counts = progressData.counts;
+      }
+      
+      broadcastSSEData(progressData);
+    };
+    
     sendUpdate('🔄 Starting Full Sync with loop protection (no deletions)', 'info');
     
     // === STEP 1: FETCH ALL RAINDROPS ===
@@ -207,6 +232,7 @@ async function performFullSync(limit = 0) {
     // Create in batches using PROVEN WORKING TIMINGS from your working file
     const batches = chunkArray(raindrops, 10); // 10 items per batch (proven to work)
     const batchCount = batches.length;
+    let totalProcessed = 0;
     
     for (let i = 0; i < batchCount; i++) {
       const batch = batches[i];
@@ -224,8 +250,8 @@ async function performFullSync(limit = 0) {
             const isLoop = trackSyncOperation('update', existingPage.id, item.title);
             
             if (isLoop) {
-              sendUpdate(`⚠️ Skipping update of "${item.title}" - potential loop detected`, 'warning');
               loopPreventionSkips++;
+              console.log(`⚠️ Skipping update of "${item.title}" - potential loop detected`);
               continue;
             }
             
@@ -233,18 +259,14 @@ async function performFullSync(limit = 0) {
               const success = await updateNotionPage(existingPage.id, item);
               if (success) {
                 updatedCount++;
-                sendUpdate(`🔄 Updated: "${item.title}"`, 'updated');
-                
-                if (updatedCount % 20 === 0) {
-                  sendUpdate(`📊 Progress: ${updatedCount} pages updated`, 'info');
-                }
+                console.log(`🔄 Updated: "${item.title}"`);
               } else {
-                sendUpdate(`❌ Failed to update: "${item.title}"`, 'failed');
                 failedCount++;
+                console.log(`❌ Failed to update: "${item.title}"`);
               }
             } catch (updateError) {
-              sendUpdate(`❌ Error updating "${item.title}": ${updateError.message}`, 'failed');
               failedCount++;
+              console.log(`❌ Error updating "${item.title}": ${updateError.message}`);
               await new Promise(resolve => setTimeout(resolve, 400));
             }
           } else {
@@ -253,8 +275,8 @@ async function performFullSync(limit = 0) {
             const isLoop = trackSyncOperation('create', itemKey, item.title);
             
             if (isLoop) {
-              sendUpdate(`⚠️ Skipping create of "${item.title}" - potential loop detected`, 'warning');
               loopPreventionSkips++;
+              console.log(`⚠️ Skipping create of "${item.title}" - potential loop detected`);
               continue;
             }
             
@@ -262,29 +284,32 @@ async function performFullSync(limit = 0) {
               const result = await createNotionPage(item);
               if (result.success) {
                 createdCount++;
-                sendUpdate(`✅ Created: "${item.title}"`, 'added');
-                
-                if (createdCount % 20 === 0) {
-                  sendUpdate(`📊 Progress: ${createdCount}/${raindrops.length} pages created`, 'info');
-                }
+                console.log(`✅ Created: "${item.title}"`);
               } else {
-                sendUpdate(`❌ Failed to create: "${item.title}"`, 'failed');
                 failedCount++;
+                console.log(`❌ Failed to create: "${item.title}"`);
               }
             } catch (createError) {
-              sendUpdate(`❌ Error creating "${item.title}": ${createError.message}`, 'failed');
               failedCount++;
+              console.log(`❌ Error creating "${item.title}": ${createError.message}`);
               // Longer delay on error
               await new Promise(resolve => setTimeout(resolve, 400));
             }
+          }
+          
+          totalProcessed++;
+          
+          // Send progress update every 20 items
+          if (totalProcessed % 20 === 0) {
+            sendProgressUpdate(totalProcessed, raindrops.length);
           }
           
           // PROVEN WORKING DELAY: 200ms between operations (from your working file)
           await new Promise(resolve => setTimeout(resolve, 200));
           
         } catch (error) {
-          sendUpdate(`❌ Error processing "${item.title}": ${error.message}`, 'failed');
           failedCount++;
+          console.log(`❌ Error processing "${item.title}": ${error.message}`);
           // Longer delay on error
           await new Promise(resolve => setTimeout(resolve, 400));
         }
@@ -296,6 +321,9 @@ async function performFullSync(limit = 0) {
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
+    
+    // Send final progress update
+    sendProgressUpdate(totalProcessed, raindrops.length);
     
     // === FINAL SUMMARY ===
     const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
