@@ -1,6 +1,6 @@
 /**
- * CLEAN Sync Manager - Batch Progress Updates
- * Handles: XX/ZZ complete updates, progress bar, stop button
+ * FIXED Sync Manager - Works with existing Fastify backend
+ * Handles: Progress messages, stop button, connection management
  */
 
 class SyncManager {
@@ -17,7 +17,7 @@ class SyncManager {
     Utils.ready(() => {
       this.bindEvents();
       this.setupUI();
-      console.log('🚀 Clean SyncManager initialized');
+      console.log('🚀 Fixed SyncManager initialized');
     });
   }
 
@@ -112,16 +112,18 @@ class SyncManager {
   }
 
   handleMessage(data) {
+    console.log('📨 Message received:', data);
+    
     // Skip heartbeat messages
     if (data.type === 'heartbeat') return;
     
-    // Handle progress messages (XX/ZZ complete)
+    // Handle progress messages from backend (XX/ZZ complete)
     if (data.type === 'progress') {
       this.updateProgress(data.completed, data.total, data.percentage);
       return;
     }
     
-    // Handle other messages (start, status, complete, error)
+    // Handle regular sync messages
     if (data.message) {
       this.updateProgressText(data.message);
     }
@@ -132,7 +134,7 @@ class SyncManager {
     }
   }
 
-  // CORE: Update XX/ZZ complete every 20 bookmarks
+  // Update XX/ZZ complete every 20 bookmarks
   updateProgress(completed, total, percentage) {
     // Update progress text: "20/1300 complete"
     this.updateProgressText(`${completed}/${total} complete`);
@@ -148,6 +150,7 @@ class SyncManager {
     if (progressElement) {
       progressElement.textContent = text;
     }
+    console.log(`📝 Status: ${text}`);
   }
 
   updateProgressBar(percentage) {
@@ -222,9 +225,13 @@ class SyncManager {
       connected: !!this.evtSource
     };
   }
+
+  isRunning() {
+    return this.syncInProgress;
+  }
 }
 
-// Initialize clean sync manager
+// Initialize sync manager
 Utils.ready(() => {
   if (document.getElementById('syncBtn')) {
     if (window.syncManager) {
@@ -232,6 +239,6 @@ Utils.ready(() => {
     }
     
     window.syncManager = new SyncManager();
-    console.log('🎯 Clean SyncManager ready');
+    console.log('🎯 Fixed SyncManager ready');
   }
 });
