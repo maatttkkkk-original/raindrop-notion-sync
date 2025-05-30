@@ -658,3 +658,15 @@ fastify.get('/sync-stream', async (req, reply) => {
     // Note: Don't stop sync - let it complete on server
   });
 });
+
+// VERCEL SERVERLESS HANDLER
+module.exports = async (req, res) => {
+  try {
+    await fastify.ready();
+    fastify.server.emit('request', req, res);
+  } catch (error) {
+    console.error('Fastify handler error:', error);
+    res.statusCode = 500;
+    res.end('Internal Server Error');
+  }
+};
