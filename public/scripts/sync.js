@@ -47,9 +47,21 @@ class SyncManager {
   setupLogArea() {
     const status = document.getElementById('status');
     if (status) {
-        status.innerHTML = ''; // Clear existing content
-        status.classList.add('massive-log');
-        console.log('✅ Log area initialized');
+        // Clear content but maintain visibility
+        status.innerHTML = '';
+        status.style.display = 'block';
+        status.style.visibility = 'visible';
+        status.style.opacity = '1';
+        
+        // Ensure parent sections are visible
+        const logSection = document.getElementById('log-section');
+        if (logSection) {
+            logSection.style.display = 'block';
+            logSection.style.visibility = 'visible';
+            logSection.style.opacity = '1';
+        }
+        
+        console.log('✅ Log area initialized with visibility');
     }
   }
 
@@ -169,31 +181,34 @@ class SyncManager {
 
   showStatus(message, type = 'info') {
     const status = document.getElementById('status');
-    if (!status) {
-        console.error('Status element not found');
-        return;
-    }
+    if (!status) return;
 
-    // Create message element
-    const div = document.createElement('div');
-    div.className = `sync-update ${type}`;
+    // Create update element
+    const update = document.createElement('div');
+    update.className = `sync-update ${type}`;
     
-    // Add timestamp and message
+    // Add timestamp
     const now = new Date().toLocaleTimeString();
-    div.textContent = `[${now}] ${message}`; // Use textContent for better performance
+    update.textContent = `[${now}] ${message}`;
     
-    // Append the message
-    status.appendChild(div);
-    this.messageCount++;
-
-    // Remove the style modifications from here - let CSS handle it
-    status.classList.add('active');
+    // Important: Append BEFORE any style updates
+    status.appendChild(update);
     
-    // Scroll to latest message
-    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    // Ensure log area is visible
+    status.closest('.log-section-massive').style.display = 'block';
+    
+    // Scroll to new message
+    update.scrollIntoView({ behavior: 'smooth' });
+}
 
-    console.log(`Message added (${this.messageCount}):`, message);
-  }
+// Show/hide stats
+updateStats(counts) {
+    const stats = document.getElementById('sync-stats');
+    if (stats) {
+        stats.classList.remove('hidden');
+        // Update count spans...
+    }
+}
 
   limitMessages() {
     const status = document.getElementById('status');

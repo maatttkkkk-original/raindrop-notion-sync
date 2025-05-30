@@ -38,7 +38,7 @@
       <div class="section-content">
         <div class="compact-status">
           <span id="progress-text">{{#if (eq mode "reset")}}Ready to reset and rebuild...{{else}}Ready to sync...{{/if}}</span>
-          <span class="sync-stats" id="sync-stats" style="display: none;">
+          <span class="sync-stats hidden" id="sync-stats">
             • <span id="added-count">0</span> Added • <span id="updated-count">0</span> Updated • <span id="deleted-count">0</span> Deleted • <span id="failed-count">0</span> Failed
           </span>
           {{#if (eq mode "reset")}}
