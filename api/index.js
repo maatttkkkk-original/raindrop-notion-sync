@@ -590,9 +590,23 @@ fastify.get('/sync-stream', async (req, reply) => {
     reply.raw.write(JSON.stringify({ error: 'Invalid password' }));
     reply.raw.end();
     return;
+  }// STABLE EventSource Handler - Replace the /sync-stream route in your api/index.js
+
+// Enhanced sync stream with connection stability
+fastify.get('/sync-stream', async (req, reply) => {
+  const password = req.query.password || '';
+  const mode = req.query.mode || 'smart';
+  const limit = parseInt(req.query.limit || '0', 10);
+  const daysBack = parseInt(req.query.daysBack || '30', 10);
+
+  if (!validatePassword(password)) {
+    reply.raw.writeHead(401, { 'Content-Type': 'application/json' });
+    reply.raw.write(JSON.stringify({ error: 'Invalid password' }));
+    reply.raw.end();
+    return;
   }
 
-  // ENHANCED SSE HEADERS for better connection stability
+  // ENHANCED SSE HEADERS for maximum stability
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -600,7 +614,8 @@ fastify.get('/sync-stream', async (req, reply) => {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Cache-Control',
     'X-Accel-Buffering': 'no', // Disable Nginx buffering
-    'Transfer-Encoding': 'chunked'
+    'Transfer-Encoding': 'chunked',
+    'Keep-Alive': 'timeout=300' // Keep connection alive for 5 minutes
   });
 
   const streamId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
@@ -608,15 +623,25 @@ fastify.get('/sync-stream', async (req, reply) => {
 
   const send = (data) => {
     try {
-      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (!reply.raw.destroyed && !reply.raw.writableEnded) {
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+        return true;
+      }
     } catch (error) {
       console.error(`Stream ${streamId} write error:`, error.message);
       activeStreams.delete(streamId);
+      return false;
     }
+    return false;
   };
 
   // Send immediate connection confirmation
-  send({ message: '🔗 Connected to sync stream', type: 'info', connected: true });
+  send({ 
+    message: '🔗 Connected to sync stream', 
+    type: 'info', 
+    connected: true,
+    streamId: streamId
+  });
 
   console.log(`🔗 NEW SYNC REQUEST: ${streamId}, mode: ${mode}`);
 
@@ -631,18 +656,146 @@ fastify.get('/sync-stream', async (req, reply) => {
       lockInfo: { locked: true, lockId: SYNC_LOCK_ID, duration: lockDuration }
     });
     
-    // Keep connection alive but don't start new sync
-    const keepAliveInterval = setInterval(() => {
-      send({ type: 'heartbeat', timestamp: Date.now() });
+    // Keep connection alive with heartbeats but don't start new sync
+    const waitingInterval = setInterval(() => {
+      if (!send({ type: 'heartbeat', timestamp: Date.now(), waiting: true })) {
+        clearInterval(waitingInterval);
+      }
     }, 15000);
     
     req.raw.on('close', () => {
-      clearInterval(keepAliveInterval);
+      clearInterval(waitingInterval);
       activeStreams.delete(streamId);
+      console.log(`🔌 Waiting client disconnected: ${streamId}`);
     });
     
     return;
   }
+
+  // Set global lock - PREVENT MULTIPLE SYNCS
+  GLOBAL_SYNC_LOCK = true;
+  SYNC_START_TIME = Date.now();
+  SYNC_LOCK_ID = `sync_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  
+  console.log(`🔐 SETTING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
+  
+  // Create new sync process
+  currentSync = {
+    mode,
+    limit,
+    daysBack,
+    isRunning: true,
+    lockId: SYNC_LOCK_ID,
+    startTime: Date.now(),
+    counts: { added: 0, updated: 0, skipped: 0, deleted: 0, failed: 0 },
+    completed: false
+  };
+
+  // Enhanced heartbeat to keep connection alive
+  const heartbeatInterval = setInterval(() => {
+    if (activeStreams.has(streamId)) {
+      send({ type: 'heartbeat', timestamp: Date.now() });
+    } else {
+      clearInterval(heartbeatInterval);
+    }
+  }, 10000); // Every 10 seconds
+
+  // Choose sync mode
+  let syncPromise;
+  if (mode === 'reset' || mode === 'full') {
+    syncPromise = performResetAndFullSync(limit);
+  } else {
+    syncPromise = performSmartIncrementalSync(daysBack);
+  }
+
+  // Start sync process with enhanced error handling
+  syncPromise
+    .then(() => {
+      console.log(`✅ Sync completed successfully - Lock ID: ${SYNC_LOCK_ID}`);
+      send({
+        message: '🎉 Sync process completed successfully',
+        type: 'complete',
+        success: true
+      });
+    })
+    .catch(error => {
+      console.error(`❌ SYNC ERROR - Lock ID: ${SYNC_LOCK_ID}:`, error);
+      send({
+        message: `Sync failed: ${error.message}`,
+        type: 'failed',
+        complete: true,
+        error: true
+      });
+    })
+    .finally(() => {
+      // Always release lock and cleanup
+      console.log(`🔓 RELEASING SYNC LOCK - ID: ${SYNC_LOCK_ID}`);
+      GLOBAL_SYNC_LOCK = false;
+      SYNC_START_TIME = null;
+      SYNC_LOCK_ID = null;
+      
+      if (currentSync) {
+        currentSync.isRunning = false;
+        currentSync = null;
+      }
+      
+      clearInterval(heartbeatInterval);
+      
+      // Send final completion message
+      send({
+        message: '✅ Sync session ended',
+        type: 'session_end',
+        complete: true
+      });
+      
+      // Close connection after brief delay to ensure message is sent
+      setTimeout(() => {
+        activeStreams.delete(streamId);
+        try {
+          if (!reply.raw.destroyed) {
+            reply.raw.end();
+          }
+        } catch (error) {
+          console.error('Error closing SSE connection:', error.message);
+        }
+      }, 1000);
+    });
+
+  // Handle client disconnect - CRITICAL: Don't restart sync
+  req.raw.on('close', () => {
+    console.log(`🔌 Client disconnected: ${streamId} - Sync continues running`);
+    clearInterval(heartbeatInterval);
+    activeStreams.delete(streamId);
+    // NOTE: We do NOT stop the sync when client disconnects!
+    // The sync continues running on the server
+  });
+
+  req.raw.on('error', (error) => {
+    console.error(`🔌 Connection error for ${streamId}:`, error.message);
+    clearInterval(heartbeatInterval);
+    activeStreams.delete(streamId);
+    // NOTE: We do NOT stop the sync on connection errors!
+  });
+
+  // Connection timeout safety
+  const connectionTimeout = setTimeout(() => {
+    console.log(`⏰ Connection timeout for ${streamId}`);
+    clearInterval(heartbeatInterval);
+    activeStreams.delete(streamId);
+    try {
+      if (!reply.raw.destroyed) {
+        reply.raw.end();
+      }
+    } catch (error) {
+      console.error('Timeout cleanup error:', error.message);
+    }
+  }, 600000); // 10 minutes max connection time
+
+  // Clear timeout on natural completion
+  syncPromise.finally(() => {
+    clearTimeout(connectionTimeout);
+  });
+});
 
   // Set global lock
   GLOBAL_SYNC_LOCK = true;

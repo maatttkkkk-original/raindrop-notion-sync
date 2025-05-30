@@ -176,17 +176,161 @@ class SyncManager {
     this.showStatus('🚀 Initializing sync connection...', 'info');
     
     // Start connection
-    this.connectToSyncStream(syncUrl.toString());
-  }
-
-  connectToSyncStream(url) {
-    console.log('🔌 Creating EventSource connection to:', url);
+   connectToSyncStream(url) {
+  console.log('🔌 Creating STABLE EventSource connection to:', url);
+  
+  try {
+    // Clean up any existing connection
+    this.cleanup();
     
-    try {
-      // Clean up any existing connection
-      this.cleanup();
+    this.evtSource = new EventSource(url);
+    
+    // Set up connection timeout (separate from heartbeat)
+    this.connectionTimeout = setTimeout(() => {
+      console.log('⏰ Connection timeout - but sync may still be running on server');
+      this.showStatus('⏰ Connection timeout - sync continues on server', 'warning');
+      // Don't restart sync on timeout - just show status
+    }, 30000);
+    
+    this.evtSource.onopen = (event) => {
+      console.log('✅ EventSource connection opened', event);
+      this.showStatus('🔗 Connected to sync stream', 'success');
+      this.connectionRetries = 0; // Reset retry counter on successful connection
       
-      this.evtSource = new EventSource(url);
+      // Clear connection timeout on successful open
+      if (this.connectionTimeout) {
+        clearTimeout(this.connectionTimeout);
+        this.connectionTimeout = null;
+      }
+    };
+
+    this.evtSource.onmessage = (event) => {
+      try {
+        console.log('📨 Raw message received:', event.data);
+        const data = JSON.parse(event.data);
+        console.log('📦 Parsed message:', data);
+        
+        this.handleSyncMessage(data);
+      } catch (error) {
+        console.error('❌ Error parsing sync message:', error, 'Raw data:', event.data);
+        this.showStatus('❌ Error parsing sync data', 'error');
+      }
+    };
+
+    this.evtSource.onerror = (error) => {
+      console.error('❌ EventSource error:', error);
+      console.log('EventSource readyState:', this.evtSource?.readyState);
+      
+      // Clear connection timeout
+      if (this.connectionTimeout) {
+        clearTimeout(this.connectionTimeout);
+        this.connectionTimeout = null;
+      }
+      
+      if (!navigator.onLine) {
+        this.showStatus('🌐 No internet connection - sync may continue on server', 'warning');
+        return;
+      }
+      
+      // Handle different error scenarios
+      if (this.evtSource?.readyState === EventSource.CLOSED) {
+        // Connection closed - this might be normal completion
+        this.showStatus('🔌 Connection closed - checking if sync completed...', 'info');
+        
+        // Don't automatically reconnect - sync might have completed normally
+        // Wait a moment to see if we get completion status
+        setTimeout(() => {
+          if (this.syncInProgress && this.connectionRetries < this.maxRetries) {
+            this.showStatus('🔄 Attempting to reconnect to check sync status...', 'info');
+            this.handleConnectionError('Connection closed, reconnecting to check status');
+          }
+        }, 3000);
+        
+      } else if (this.evtSource?.readyState === EventSource.CONNECTING) {
+        this.showStatus('🔄 Reconnecting to sync stream...', 'info');
+      } else {
+        this.handleConnectionError('Connection error occurred');
+      }
+    };
+
+  } catch (error) {
+    console.error('❌ Failed to create EventSource:', error);
+    this.handleSyncError('Failed to establish sync connection');
+  }
+}
+
+// Enhanced connection error handling - PREVENTS RESTART LOOPS
+handleConnectionError(errorMessage) {
+  console.error('🔌 Connection error:', errorMessage);
+  
+  // CRITICAL: Don't restart sync, just try to reconnect for status updates
+  if (this.connectionRetries < this.maxRetries && this.syncInProgress) {
+    this.connectionRetries++;
+    const delay = Math.min(2000 * this.connectionRetries, 10000); // Progressive delay
+    
+    this.showStatus(`🔄 Connection lost, reconnecting in ${delay/1000}s to check status... (${this.connectionRetries}/${this.maxRetries})`, 'warning');
+    
+    setTimeout(() => {
+      if (this.syncInProgress) {
+        // Reconnect with special flag to indicate this is status-check only
+        const urlParams = new URLSearchParams(window.location.search);
+        const password = urlParams.get('password');
+        const mode = urlParams.get('mode') || 'smart';
+        const daysBack = urlParams.get('daysBack') || '30';
+        const deleteOrphaned = urlParams.get('deleteOrphaned') === 'true';
+        
+        const syncUrl = new URL('/sync-stream', window.location.origin);
+        syncUrl.searchParams.set('password', password);
+        syncUrl.searchParams.set('mode', mode);
+        syncUrl.searchParams.set('daysBack', daysBack);
+        syncUrl.searchParams.set('deleteOrphaned', deleteOrphaned);
+        syncUrl.searchParams.set('reconnect', 'true'); // Flag for server
+        syncUrl.searchParams.set('_t', Date.now().toString());
+        
+        console.log('🔄 Reconnecting to check sync status...');
+        this.connectToSyncStream(syncUrl.toString());
+      }
+    }, delay);
+  } else {
+    // Max retries reached or sync not in progress
+    if (this.connectionRetries >= this.maxRetries) {
+      this.showStatus('🔌 Connection lost - sync may still be running on server', 'warning');
+      this.showStatus('↻ Refresh page to check if sync completed', 'info');
+    }
+    
+    // Don't call handleSyncError - that would show "failed" when sync might be succeeding
+    this.updateSyncUI(false);
+  }
+}
+
+// Enhanced cleanup to prevent memory leaks
+cleanup() {
+  console.log('🧹 Cleaning up connections and timers');
+  
+  if (this.connectionTimeout) {
+    clearTimeout(this.connectionTimeout);
+    this.connectionTimeout = null;
+  }
+  
+  if (this.heartbeatTimeout) {
+    clearTimeout(this.heartbeatTimeout);
+    this.heartbeatTimeout = null;
+  }
+  
+  if (this.evtSource) {
+    console.log('🔌 Closing EventSource connection');
+    this.evtSource.close();
+    this.evtSource = null;
+  }
+  
+  if (this.abortController) {
+    this.abortController.abort();
+    this.abortController = null;
+  }
+  
+  this.syncInProgress = false;
+  this.connectionRetries = 0;
+}
       
       // Set up heartbeat timeout
       this.resetHeartbeat();
