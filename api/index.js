@@ -105,10 +105,10 @@ fastify.register(require('@fastify/static'), {
   prefix: '/public/'
 });
 
-// ENHANCED MODE 1: FULL SYNC with PROVEN TIMING + Clean Progress (NO DELETIONS)
+// ENHANCED MODE 1: FULL SYNC with Loop Protection (NO DELETIONS)
 async function performFullSync(limit = 0) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
-  console.log(`Full Sync starting - Lock ID: ${lockId} (NO DELETIONS)`);
+  console.log(`🔄 Full Sync starting - Lock ID: ${lockId} (NO DELETIONS)`);
   
   let createdCount = 0;
   let updatedCount = 0;
@@ -121,7 +121,7 @@ async function performFullSync(limit = 0) {
     
     // Helper to send regular status updates (start/fetch phases)
     const sendUpdate = (message, type = '') => {
-      console.log(`[${lockId}] ${message}`);
+      console.log(`🔄 [${lockId}] ${message}`);
       
       const updateData = {
         message: `${message}`,
@@ -146,10 +146,10 @@ async function performFullSync(limit = 0) {
       broadcastSSEData(updateData);
     };
     
-    // CLEAN: Helper to send batch progress updates (every 20 items)
+    // Helper to send batch progress updates (every 20 items)
     const sendProgressUpdate = (completed, total) => {
       const percentage = Math.round((completed / total) * 100);
-      console.log(`[${lockId}] Progress: ${completed}/${total} (${percentage}%)`);
+      console.log(`📊 [${lockId}] Progress: ${completed}/${total} (${percentage}%)`);
       
       const progressData = {
         type: 'progress',
@@ -171,10 +171,10 @@ async function performFullSync(limit = 0) {
       broadcastSSEData(progressData);
     };
     
-    sendUpdate('Starting Full Sync with loop protection (no deletions)', 'info');
+    sendUpdate('🔄 Starting Full Sync with loop protection (no deletions)', 'info');
     
     // === STEP 1: FETCH ALL RAINDROPS ===
-    sendUpdate('Fetching all Raindrop bookmarks...', 'fetching');
+    sendUpdate('📡 Fetching all Raindrop bookmarks...', 'fetching');
     
     let raindrops = [];
     try {
@@ -183,7 +183,7 @@ async function performFullSync(limit = 0) {
       throw new Error(`Failed to fetch raindrops: ${error.message}`);
     }
     
-    sendUpdate(`Found ${raindrops.length} Raindrop bookmarks to sync`, 'success');
+    sendUpdate(`✅ Found ${raindrops.length} Raindrop bookmarks to sync`, 'success');
     
     if (raindrops.length === 0) {
       sendUpdate('No raindrops to sync. Process complete.', 'complete');
@@ -195,7 +195,7 @@ async function performFullSync(limit = 0) {
     }
     
     // === STEP 2: FETCH EXISTING NOTION PAGES ===
-    sendUpdate('Fetching existing Notion pages...', 'fetching');
+    sendUpdate('📡 Fetching existing Notion pages...', 'fetching');
     
     let existingPages = [];
     try {
@@ -204,10 +204,10 @@ async function performFullSync(limit = 0) {
       throw new Error(`Failed to fetch existing Notion pages: ${error.message}`);
     }
     
-    sendUpdate(`Found ${existingPages.length} existing Notion pages`, 'success');
+    sendUpdate(`✅ Found ${existingPages.length} existing Notion pages`, 'success');
     
     // === STEP 3: BUILD NOTION LOOKUP MAPS ===
-    sendUpdate('Building comparison maps...', 'processing');
+    sendUpdate('🔍 Building comparison maps...', 'processing');
     
     const notionUrlMap = new Map();
     const notionTitleMap = new Map();
@@ -224,19 +224,19 @@ async function performFullSync(limit = 0) {
       }
     }
     
-    sendUpdate(`Built lookup maps for comparison`, 'success');
+    sendUpdate(`✅ Built lookup maps for comparison`, 'success');
     
     // === STEP 4: PROCESS ALL RAINDROPS (CREATE + UPDATE ONLY) ===
-    sendUpdate(`Processing ${raindrops.length} bookmarks (create + update only)...`, 'processing');
+    sendUpdate(`📝 Processing ${raindrops.length} bookmarks (create + update only)...`, 'processing');
     
-    // PROVEN WORKING TIMING: Create in batches of 10 items per batch
-    const batches = chunkArray(raindrops, 10);
+    // Create in batches using PROVEN WORKING TIMINGS from your working file
+    const batches = chunkArray(raindrops, 10); // 10 items per batch (proven to work)
     const batchCount = batches.length;
     let totalProcessed = 0;
     
     for (let i = 0; i < batchCount; i++) {
       const batch = batches[i];
-      sendUpdate(`Processing batch ${i + 1}/${batchCount} (${batch.length} pages)`, 'processing');
+      sendUpdate(`📝 Processing batch ${i + 1}/${batchCount} (${batch.length} pages)`, 'processing');
       
       for (const item of batch) {
         try {
@@ -251,7 +251,7 @@ async function performFullSync(limit = 0) {
             
             if (isLoop) {
               loopPreventionSkips++;
-              console.log(`Skipping update of "${item.title}" - potential loop detected`);
+              console.log(`⚠️ Skipping update of "${item.title}" - potential loop detected`);
               continue;
             }
             
@@ -259,15 +259,14 @@ async function performFullSync(limit = 0) {
               const success = await updateNotionPage(existingPage.id, item);
               if (success) {
                 updatedCount++;
-                console.log(`Updated: "${item.title}"`);
+                console.log(`🔄 Updated: "${item.title}"`);
               } else {
                 failedCount++;
-                console.log(`Failed to update: "${item.title}"`);
+                console.log(`❌ Failed to update: "${item.title}"`);
               }
             } catch (updateError) {
               failedCount++;
-              console.log(`Error updating "${item.title}": ${updateError.message}`);
-              // PROVEN WORKING ERROR DELAY: 400ms on errors
+              console.log(`❌ Error updating "${item.title}": ${updateError.message}`);
               await new Promise(resolve => setTimeout(resolve, 400));
             }
           } else {
@@ -277,7 +276,7 @@ async function performFullSync(limit = 0) {
             
             if (isLoop) {
               loopPreventionSkips++;
-              console.log(`Skipping create of "${item.title}" - potential loop detected`);
+              console.log(`⚠️ Skipping create of "${item.title}" - potential loop detected`);
               continue;
             }
             
@@ -285,40 +284,40 @@ async function performFullSync(limit = 0) {
               const result = await createNotionPage(item);
               if (result.success) {
                 createdCount++;
-                console.log(`Created: "${item.title}"`);
+                console.log(`✅ Created: "${item.title}"`);
               } else {
                 failedCount++;
-                console.log(`Failed to create: "${item.title}"`);
+                console.log(`❌ Failed to create: "${item.title}"`);
               }
             } catch (createError) {
               failedCount++;
-              console.log(`Error creating "${item.title}": ${createError.message}`);
-              // PROVEN WORKING ERROR DELAY: 400ms on errors
+              console.log(`❌ Error creating "${item.title}": ${createError.message}`);
+              // Longer delay on error
               await new Promise(resolve => setTimeout(resolve, 400));
             }
           }
           
           totalProcessed++;
           
-          // CLEAN: Send progress update every 20 items
+          // Send progress update every 20 items
           if (totalProcessed % 20 === 0 || totalProcessed === raindrops.length) {
             sendProgressUpdate(totalProcessed, raindrops.length);
           }
           
-          // PROVEN WORKING DELAY: 200ms between operations
+          // PROVEN WORKING DELAY: 200ms between operations (from your working file)
           await new Promise(resolve => setTimeout(resolve, 200));
           
         } catch (error) {
           failedCount++;
-          console.log(`Error processing "${item.title}": ${error.message}`);
-          // PROVEN WORKING ERROR DELAY: 400ms on errors
+          console.log(`❌ Error processing "${item.title}": ${error.message}`);
+          // Longer delay on error
           await new Promise(resolve => setTimeout(resolve, 400));
         }
       }
       
-      // PROVEN WORKING DELAY: 2000ms between batches
+      // PROVEN WORKING DELAY: 2000ms between batches (from your working file)
       if (i < batchCount - 1) {
-        sendUpdate(`Batch ${i + 1} complete, waiting before next batch...`, 'info');
+        sendUpdate(`⏳ Batch ${i + 1} complete, waiting before next batch...`, 'info');
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
@@ -329,10 +328,10 @@ async function performFullSync(limit = 0) {
     // === FINAL SUMMARY ===
     const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
     
-    sendUpdate(`Full Sync completed in ${duration}s!`, 'complete');
-    sendUpdate(`Results: ${createdCount} created, ${updatedCount} updated, ${failedCount} failed, ${loopPreventionSkips} loop-prevention skips`, 'summary');
+    sendUpdate(`🎉 Full Sync completed in ${duration}s!`, 'complete');
+    sendUpdate(`📊 Results: ${createdCount} created, ${updatedCount} updated, ${failedCount} failed, ${loopPreventionSkips} loop-prevention skips`, 'summary');
     
-    console.log(`[${lockId}] FULL SYNC COMPLETE: ${duration}s`);
+    console.log(`✅ [${lockId}] FULL SYNC COMPLETE: ${duration}s`);
     
     if (currentSync) {
       currentSync.completed = true;
@@ -354,7 +353,7 @@ async function performFullSync(limit = 0) {
     return { complete: true };
     
   } catch (error) {
-    console.error(`[${lockId}] FULL SYNC ERROR:`, error);
+    console.error(`❌ [${lockId}] FULL SYNC ERROR:`, error);
     broadcastSSEData({
       message: `Full Sync failed: ${error.message}`,
       type: 'failed',
