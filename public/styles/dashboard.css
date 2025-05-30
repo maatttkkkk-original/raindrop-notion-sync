@@ -422,3 +422,28 @@ transition: opacity var(--transition-fast);
 opacity: 0.8;
 transform: none;
 }
+.massive-log {
+display: block !important;
+min-height: 300px;
+max-height: 500px;
+overflow-y: auto;
+background: #fff;
+border: 1px solid #eee;
+padding: 1rem;
+font-family: monospace;
+font-size: 14px;
+line-height: 1.4;
+}
+.massive-log.active {
+display: block !important;
+}
+.sync-update {
+margin: 4px 0;
+padding: 8px;
+border-left: 3px solid #ccc;
+background: #f8f9fa;
+}
+.sync-update.info { border-left-color: #0d6efd; }
+.sync-update.success { border-left-color: #198754; }
+.sync-update.error { border-left-color: #dc3545; }
+.sync-update.warning { border-left-color: #ffc107; }

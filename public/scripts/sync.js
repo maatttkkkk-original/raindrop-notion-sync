@@ -47,11 +47,9 @@ class SyncManager {
   setupLogArea() {
     const status = document.getElementById('status');
     if (status) {
-      // Clear any existing content
-      status.innerHTML = '';
-      // Show the log area
-      status.style.display = 'block';
-      console.log('✅ Log area initialized');
+        status.innerHTML = ''; // Clear existing content
+        status.classList.add('massive-log');
+        console.log('✅ Log area initialized');
     }
   }
 
@@ -172,66 +170,29 @@ class SyncManager {
   showStatus(message, type = 'info') {
     const status = document.getElementById('status');
     if (!status) {
-      console.log(`Status: ${message}`);
-      return;
+        console.error('Status element not found');
+        return;
     }
 
-    // Ensure status area is visible
-    status.style.display = 'block';
-    
     // Create message element
     const div = document.createElement('div');
     div.className = `sync-update ${type}`;
     
-    // Apply styling that works with massive-log area
-    const styles = {
-      padding: '8px 12px',
-      margin: '4px 0',
-      borderRadius: '3px',
-      fontFamily: "'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace",
-      fontSize: '12px',
-      lineHeight: '1.3',
-      borderLeft: '3px solid #007bff',
-      background: '#f8f9fa',
-      color: '#333',
-      wordWrap: 'break-word',
-      display: 'block' // Ensure it's visible
-    };
-    
-    // Type-specific styling
-    const typeStyles = {
-      info: { borderLeftColor: '#3b82f6', background: '#eff6ff' },
-      success: { borderLeftColor: '#22c55e', background: '#f0fdf4' },
-      added: { borderLeftColor: '#22c55e', background: '#f0fdf4' },
-      updated: { borderLeftColor: '#f59e0b', background: '#fffbeb' },
-      deleted: { borderLeftColor: '#ef4444', background: '#fef2f2' },
-      failed: { borderLeftColor: '#ef4444', background: '#fef2f2', fontWeight: '500' },
-      error: { borderLeftColor: '#ef4444', background: '#fef2f2', fontWeight: '500' },
-      warning: { borderLeftColor: '#f59e0b', background: '#fffbeb' },
-      complete: { borderLeftColor: '#22c55e', background: '#f0fdf4', fontWeight: '600' },
-      analysis: { borderLeftColor: '#8b5cf6', background: '#f3e8ff' },
-      processing: { borderLeftColor: '#8b5cf6', background: '#f3e8ff' },
-      fetching: { borderLeftColor: '#06b6d4', background: '#ecfeff' }
-    };
-    
-    // Apply styles
-    Object.assign(div.style, styles, typeStyles[type] || {});
-    
     // Add timestamp and message
     const now = new Date().toLocaleTimeString();
-    div.textContent = `[${now}] ${message}`;
+    div.textContent = `[${now}] ${message}`; // Use textContent for better performance
     
-    // Append to container
+    // Append the message
     status.appendChild(div);
     this.messageCount++;
+
+    // Remove the style modifications from here - let CSS handle it
+    status.classList.add('active');
     
-    // Limit messages to prevent memory issues
-    this.limitMessages();
-    
-    // Auto-scroll to bottom
-    this.scrollToBottom();
-    
-    console.log(`📝 Message added: ${message} (${type})`);
+    // Scroll to latest message
+    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+    console.log(`Message added (${this.messageCount}):`, message);
   }
 
   limitMessages() {
@@ -388,4 +349,29 @@ Utils.ready(() => {
     
     console.log('🎯 Fixed SyncManager ready');
   }
+});
+
+// Add after the SyncManager class definition
+window.addEventListener('error', (event) => {
+    console.error('Global error:', event.error);
+});
+
+// Debug any mutation changes to status
+const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+            console.log('Status children changed:', {
+                added: mutation.addedNodes.length,
+                removed: mutation.removedNodes.length,
+                total: document.getElementById('status')?.children.length
+            });
+        }
+    });
+});
+
+Utils.ready(() => {
+    const status = document.getElementById('status');
+    if (status) {
+        observer.observe(status, { childList: true });
+    }
 });
