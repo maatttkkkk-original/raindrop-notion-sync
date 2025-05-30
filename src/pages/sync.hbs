@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{#if (eq mode "reset")}}Reset & Full Sync{{else}}Smart Sync{{/if}} - Raindrop Notion</title>
+  <title>{{#if (eq mode "full")}}Full Sync{{else}}Smart Sync{{/if}} - Raindrop Notion</title>
   
   <link rel="stylesheet" href="/public/styles/design-system.css?v=2024-05-28-001">
   <link rel="stylesheet" href="/public/styles/components.css?v=2024-05-28-001">
@@ -15,7 +15,7 @@
     <div class="dashboard-section section-1 bg-white">
       <div class="section-content">
         <h1 class="text-huge sync-title" id="sync-title">
-          {{#if (eq mode "reset")}}Reset & Full Sync{{else}}Smart Sync{{/if}}
+          {{#if (eq mode "full")}}Full Sync{{else}}Smart Sync{{/if}}
         </h1>
       </div>
     </div>
@@ -23,26 +23,28 @@
     <div class="dashboard-divider"></div>
     
     <!-- Section 2: Dynamic Action Button -->
-    <div class="dashboard-section section-2 {{#if (eq mode "reset")}}bg-red{{else}}bg-yellow{{/if}}" id="action-section">
+    <div class="dashboard-section section-2 {{#if (eq mode "full")}}bg-green{{else}}bg-yellow{{/if}}" id="action-section">
       <div class="section-content">
-        <button id="syncBtn" class="section-action-button text-huge {{#if (eq mode "reset")}}text-white{{else}}text-black{{/if}}" type="button">
-          {{#if (eq mode "reset")}}Start Reset & Full Sync{{else}}Start Smart Sync{{/if}}
+        <button id="syncBtn" class="section-action-button text-huge {{#if (eq mode "full")}}text-white{{else}}text-black{{/if}}" type="button">
+          {{#if (eq mode "full")}}Start Full Sync{{else}}Start Smart Sync{{/if}}
         </button>
       </div>
     </div>
     
     <div class="dashboard-divider"></div>
     
-    <!-- Section 3: Compact Status + Stats -->
+    <!-- Section 3: Compact Status + Stats (No Deletions) -->
     <div class="dashboard-section section-3 bg-white" id="compact-status-section">
       <div class="section-content">
         <div class="compact-status">
-          <span id="progress-text">{{#if (eq mode "reset")}}Ready to reset and rebuild...{{else}}Ready to sync...{{/if}}</span>
+          <span id="progress-text">{{#if (eq mode "full")}}Ready for full sync (all bookmarks)...{{else}}Ready for smart sync (recent bookmarks)...{{/if}}</span>
           <span class="sync-stats hidden" id="sync-stats">
-            • <span id="added-count">0</span> Added • <span id="updated-count">0</span> Updated • <span id="deleted-count">0</span> Deleted • <span id="failed-count">0</span> Failed
+            • <span id="added-count">0</span> Added • <span id="updated-count">0</span> Updated • <span id="failed-count">0</span> Failed
           </span>
-          {{#if (eq mode "reset")}}
-          <span class="text-red">⚠️ This will delete all existing Notion pages</span>
+          {{#if (eq mode "full")}}
+          <span class="text-green">✅ Processes all bookmarks (create + update only)</span>
+          {{else}}
+          <span class="text-green">⚡ Processes recent bookmarks only (fast)</span>
           {{/if}}
         </div>
       </div>

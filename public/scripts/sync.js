@@ -1,7 +1,7 @@
 /**
- * FIXED Sync Manager - Handles both issues
+ * FIXED Sync Manager - No Deletions Version
  * Issue 1: Proper log display for massive-log area
- * Issue 2: Sync loop protection
+ * Issue 2: No deletion tracking or counters
  */
 
 class SyncManager {
@@ -13,7 +13,7 @@ class SyncManager {
     this.messageCount = 0;
     this.maxMessages = 100;
     
-    // Loop protection
+    // Loop protection (no deletion tracking)
     this.lastSyncType = null;
     this.consecutiveErrors = 0;
     this.maxConsecutiveErrors = 5;
@@ -25,7 +25,7 @@ class SyncManager {
     Utils.ready(() => {
       this.bindEvents();
       this.setupLogArea();
-      console.log('🚀 Fixed SyncManager initialized');
+      console.log('🚀 Fixed SyncManager initialized (no deletions)');
     });
   }
 
@@ -61,7 +61,7 @@ class SyncManager {
             logSection.style.opacity = '1';
         }
         
-        console.log('✅ Log area initialized with visibility');
+        console.log('✅ Log area initialized with visibility (no deletion tracking)');
     }
   }
 
@@ -151,7 +151,7 @@ class SyncManager {
       this.showStatus(data.message, data.type || 'info');
     }
     
-    // Update stats if available
+    // Update stats if available (no deletion counters)
     if (data.counts) {
       this.updateStats(data.counts);
     }
@@ -163,7 +163,7 @@ class SyncManager {
       this.updateButton(false);
       this.cleanup();
       
-      // Show final stats
+      // Show final stats (no deletions)
       if (data.finalCounts) {
         this.showFinalSummary(data.finalCounts, data.mode, data.duration);
       }
@@ -199,16 +199,16 @@ class SyncManager {
     
     // Scroll to new message
     update.scrollIntoView({ behavior: 'smooth' });
-}
+  }
 
-// Show/hide stats
-updateStats(counts) {
+  // Show/hide stats (no deletion counters)
+  updateStats(counts) {
     const stats = document.getElementById('sync-stats');
     if (stats) {
         stats.classList.remove('hidden');
-        // Update count spans...
+        // Update count spans (no deleted counter)...
     }
-}
+  }
 
   limitMessages() {
     const status = document.getElementById('status');
@@ -257,14 +257,14 @@ updateStats(counts) {
       }
     }
     
-    console.log('📊 Log areas activated');
+    console.log('📊 Log areas activated (no deletion tracking)');
   }
 
   updateStats(counts) {
+    // Updated to handle new count structure (no deletions)
     const elements = {
       'added-count': counts.added || counts.created || 0,
       'updated-count': counts.updated || 0,
-      'deleted-count': counts.deleted || 0,
       'failed-count': counts.failed || 0
     };
     
@@ -283,11 +283,11 @@ updateStats(counts) {
   }
 
   showFinalSummary(counts, mode, duration) {
+    // Updated final summary (no deletions)
     const summary = [
       `📊 Final Results:`,
       `• Added: ${counts.added || counts.created || 0}`,
       `• Updated: ${counts.updated || 0}`,
-      `• Deleted: ${counts.deleted || 0}`,
       `• Failed: ${counts.failed || 0}`,
       duration ? `⏱️ Duration: ${duration}s` : '',
       `🔄 Mode: ${mode || 'unknown'}`
@@ -305,10 +305,10 @@ updateStats(counts) {
     const mode = new URLSearchParams(window.location.search).get('mode') || 'smart';
     
     if (running) {
-      btn.textContent = mode === 'reset' ? 'Reset Sync Running...' : 'Smart Sync Running...';
+      btn.textContent = mode === 'full' ? 'Full Sync Running...' : 'Smart Sync Running...';
       btn.style.opacity = '0.6';
     } else {
-      btn.textContent = mode === 'reset' ? 'Start Reset & Full Sync' : 'Start Smart Sync';
+      btn.textContent = mode === 'full' ? 'Start Full Sync' : 'Start Smart Sync';
       btn.style.opacity = '1';
     }
   }
@@ -362,7 +362,7 @@ Utils.ready(() => {
     window.syncDebug = () => console.log(window.syncManager.getStatus());
     window.syncStop = () => window.syncManager.forceStop();
     
-    console.log('🎯 Fixed SyncManager ready');
+    console.log('🎯 Fixed SyncManager ready (no deletions)');
   }
 });
 

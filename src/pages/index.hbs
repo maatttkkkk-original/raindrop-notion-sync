@@ -63,14 +63,14 @@
     
     <div class="dashboard-divider"></div>
     
-    <!-- Section 5: Primary Action -->
+    <!-- Section 5: Primary Action (Smart Sync) -->
     <div class="dashboard-section section-5 bg-white" id="primary-action-section">
       <div class="section-content">
         <form action="/sync" method="get" style="display:inline;">
           <input type="hidden" name="password" value="{{password}}">
           <input type="hidden" name="mode" value="smart">
           <button type="submit" class="section-action-button text-huge text-black" id="primaryAction">
-            Sync New? ↻
+            Smart Sync ⚡
           </button>
         </form>
       </div>
@@ -78,15 +78,14 @@
     
     <div class="dashboard-divider"></div>
     
-    <!-- Section 6: Secondary Action -->
+    <!-- Section 6: Secondary Action (Full Sync) -->
     <div class="dashboard-section section-6 bg-white" id="secondary-action-section">
       <div class="section-content">
         <form action="/sync" method="get" style="display:inline;">
           <input type="hidden" name="password" value="{{password}}">
-          <input type="hidden" name="mode" value="reset">
-          <input type="hidden" name="deleteOrphaned" value="true">
+          <input type="hidden" name="mode" value="full">
           <button type="submit" class="section-action-button text-huge text-black" id="secondaryAction">
-            Reset / FullSync
+            Full Sync 📚
           </button>
         </form>
       </div>
