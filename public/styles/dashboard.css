@@ -1,677 +1,424 @@
 /* Enhanced Dashboard & Sync Styles */
 /* File: public/styles/dashboard.css */
-
-/* 8-Section Dashboard Layout */
+/* ===== 8-SECTION DASHBOARD LAYOUT ===== */
 .dashboard-8-section {
-  display: grid;
-  grid-template-rows: 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr;
-  height: 100vh;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
+display: grid;
+grid-template-rows: 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr 2px 1fr;
+height: 100vh;
+width: 100%;
+margin: 0;
+padding: 0;
+overflow: hidden;
 }
-
 .dashboard-section {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 0 var(--container-padding);
-  width: 100%;
-  position: relative;
+display: flex;
+align-items: center;
+justify-content: flex-start;
+padding: 0 var(--container-padding);
+width: 100%;
+position: relative;
 }
-
-.dashboard-section.section-1 {
-  background: white;
-}
-
-.dashboard-section.section-2 {
-  background: white;
-}
-
-.dashboard-section.section-3 {
-  background: white;
-}
-
-.dashboard-section.section-4 {
-  background: white;
-}
-
-.dashboard-section.section-5 {
-  background: white;
-}
-
-.dashboard-section.section-6 {
-  background: white;
-}
-
-.dashboard-section.section-7 {
-  background: white;
-}
-
-.dashboard-section.section-8 {
-  background: #f5f5f5;
-}
-
 /* Dividing Lines */
 .dashboard-divider {
-  width: 100%;
-  height: 2px;
-  background: black;
-  margin: 0;
-  padding: 0;
+width: 100%;
+height: 2px;
+background: black;
+margin: 0;
+padding: 0;
 }
-
+/* ===== SECTION BACKGROUNDS ===== */
+.dashboard-section.section-1 { background: white; }
+.dashboard-section.section-2 { background: white; }
+.dashboard-section.section-3 { background: white; }
+.dashboard-section.section-4 { background: white; }
+.dashboard-section.section-5 { background: white; }
+.dashboard-section.section-6 { background: white; }
+.dashboard-section.section-7 { background: white; }
+.dashboard-section.section-8 { background: #f5f5f5; }
 /* State-Based Section Backgrounds */
-.dashboard-section.bg-yellow {
-  background: #ffff00;
-}
-
-.dashboard-section.bg-green {
-  background: #00ff00;
-}
-
-.dashboard-section.bg-red {
-  background: #ff0000;
-}
-
-.dashboard-section.bg-white {
-  background: white;
-}
-
-.dashboard-section.bg-light-gray {
-  background: #f5f5f5;
-}
-
-/* Content Styling */
+.dashboard-section.bg-yellow { background: #ffff00; }
+.dashboard-section.bg-green { background: #00ff00; }
+.dashboard-section.bg-red { background: #ff0000; }
+.dashboard-section.bg-white { background: white; }
+.dashboard-section.bg-light-gray { background: #f5f5f5; }
+/* ===== CONTENT STYLING ===== */
 .section-content {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
+width: 100%;
+display: flex;
+align-items: center;
+justify-content: flex-start;
 }
-
-.section-content.center {
-  justify-content: center;
-}
-
-.section-content.right {
-  justify-content: flex-end;
-}
-
+.section-content.center { justify-content: center; }
+.section-content.right { justify-content: flex-end; }
 /* Text Colors for Different Backgrounds */
 .dashboard-section.bg-yellow .section-content,
+.dashboard-section.bg-white .section-content {
+color: black;
+}
 .dashboard-section.bg-green .section-content,
 .dashboard-section.bg-red .section-content {
-  color: black;
+color: white;
 }
-
-.dashboard-section.bg-green .section-content {
-  color: white;
-}
-
-.dashboard-section.bg-red .section-content {
-  color: white;
-}
-
 /* Status Colors */
-.text-green {
-  color: #00ff00;
-}
-
-.text-red {
-  color: #ff0000;
-}
-
-.text-black {
-  color: black;
-}
-
-.text-white {
-  color: white;
-}
-
-/* Scrollable Log Area */
-.log-section {
-  overflow-y: auto;
-  max-height: 100%;
-  padding: var(--spacing-sm) var(--container-padding);
-}
-
-.log-section .status-display {
-  background: transparent;
-  border: none;
-  padding: 0;
-  max-height: none;
-  overflow-y: auto;
-  font-family: monospace;
-  font-size: 12px;
-  line-height: 1.3;
-}
-
-/* State Switcher Positioning */
-.state-switcher,
-.mode-switcher {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  background: white;
-  border: 2px solid #ddd;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  z-index: 1000;
-  min-width: 200px;
-}
-
-.state-switcher h3,
-.mode-switcher h3 {
-  margin-bottom: 12px;
-  font-size: 16px;
-  color: var(--color-text-primary);
-}
-
-.state-switcher h4,
-.mode-switcher h4 {
-  margin-bottom: 8px;
-  font-size: 14px;
-  color: var(--color-text-primary);
-}
-
-.state-switcher button,
-.mode-switcher button {
-  display: block;
-  width: 100%;
-  margin-bottom: 8px;
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  background: white;
-  cursor: pointer;
-  border-radius: 4px;
-  font-size: 14px;
-  transition: all 0.2s ease;
-}
-
-.state-switcher button:hover,
-.mode-switcher button:hover {
-  background: #f5f5f5;
-}
-
-.state-switcher button.active,
-.mode-switcher button.active {
-  background: var(--color-synced-bg);
-  color: white;
-  border-color: var(--color-synced-bg);
-}
-
-.state-switcher hr,
-.mode-switcher hr {
-  margin: 12px 0;
-  border: none;
-  border-top: 1px solid #ddd;
-}
-
-/* Action Buttons in Sections */
+.text-green { color: #00ff00; }
+.text-red { color: #ff0000; }
+.text-black { color: black; }
+.text-white { color: white; }
+/* ===== ACTION BUTTONS ===== */
 .section-action-button {
-  font-size: var(--font-size-huge);
-  font-family: var(--font-primary);
-  letter-spacing: var(--letter-spacing-tight);
-  line-height: var(--line-height-tight);
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: inherit;
-  transition: opacity var(--transition-fast);
+font-size: var(--font-size-huge);
+font-family: var(--font-primary);
+letter-spacing: var(--letter-spacing-tight);
+line-height: var(--line-height-tight);
+background: none;
+border: none;
+cursor: pointer;
+color: inherit;
+transition: opacity var(--transition-fast);
 }
-
 .section-action-button:hover {
-  opacity: 0.8;
+opacity: 0.8;
 }
-
 .section-action-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+opacity: 0.5;
+cursor: not-allowed;
 }
-
 /* Back Button Styling */
 .back-section {
-  padding-left: var(--container-padding);
+padding-left: var(--container-padding);
 }
-
 .back-button {
-  font-size: var(--font-size-huge);
-  color: #999;
-  text-decoration: none;
-  transition: color var(--transition-fast);
+font-size: var(--font-size-huge);
+color: #999;
+text-decoration: none;
+transition: color var(--transition-fast);
 }
-
 .back-button:hover {
-  color: #666;
+color: #666;
 }
-
-/* Responsive Adjustments */
+/* ===== STATUS INDICATORS ===== */
+.status-indicator {
+width: clamp(80px, 20vw, 120px);
+height: clamp(16px, 4vw, 24px);
+border-radius: 2px;
+transition: all var(--transition-normal);
+}
+.status-indicator.synced {
+background-color: var(--color-synced-bg);
+}
+.status-indicator.not-synced {
+background-color: var(--color-not-synced-bg);
+}
+.status-indicator.processing {
+background: linear-gradient(45deg, #667eea, #764ba2);
+animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+0%, 100% { opacity: 1; }
+50% { opacity: 0.7; }
+}
+/* ===== LOG SECTIONS ===== */
+/* Base log section styles */
+.log-section {
+overflow-y: auto;
+max-height: 100%;
+padding: var(--spacing-sm) var(--container-padding);
+}
+.log-section .status-display {
+background: transparent;
+border: none;
+padding: 0;
+max-height: none;
+overflow-y: auto;
+font-family: monospace;
+font-size: 12px;
+line-height: 1.3;
+}
+/* Massive log layout - spans sections 4-7 */
+.dashboard-section.section-4567.log-section-massive {
+grid-row: 8 / 16;
+min-height: 350px;
+}
+.dashboard-section.section-4567.log-section-massive .section-content {
+height: 100%;
+display: flex;
+flex-direction: column;
+padding: 12px;
+}
+/* Massive log container */
+.dashboard-section.section-4567.log-section-massive .status-display.massive-log {
+display: block;
+height: 300px;
+min-height: 300px;
+max-height: 60vh;
+overflow-y: auto;
+background: #f8f9fa;
+border: 1px solid #dee2e6;
+border-radius: 6px;
+padding: 16px;
+font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+font-size: 13px;
+line-height: 1.4;
+flex: 1;
+}
+/* Individual sync messages */
+.dashboard-section.section-4567.log-section-massive .massive-log .sync-update {
+display: block;
+margin-bottom: 4px;
+padding: 8px 12px;
+background: white;
+border-left: 3px solid #007bff;
+border-radius: 3px;
+font-size: 12px;
+line-height: 1.3;
+color: #333;
+word-wrap: break-word;
+box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+animation: none;
+transition: none;
+}
+/* Message type colors */
+.massive-log .sync-update.info {
+border-left-color: #3b82f6;
+background: #eff6ff;
+}
+.massive-log .sync-update.success,
+.massive-log .sync-update.added {
+border-left-color: #22c55e;
+background: #f0fdf4;
+}
+.massive-log .sync-update.updated {
+border-left-color: #f59e0b;
+background: #fffbeb;
+}
+.massive-log .sync-update.deleted {
+border-left-color: #ef4444;
+background: #fef2f2;
+}
+.massive-log .sync-update.failed,
+.massive-log .sync-update.error {
+border-left-color: #ef4444;
+background: #fef2f2;
+font-weight: 500;
+}
+.massive-log .sync-update.warning {
+border-left-color: #f59e0b;
+background: #fffbeb;
+}
+.massive-log .sync-update.complete {
+border-left-color: #22c55e;
+background: #f0fdf4;
+font-weight: 600;
+font-size: 14px;
+}
+.massive-log .sync-update.analysis,
+.massive-log .sync-update.processing {
+border-left-color: #8b5cf6;
+background: #f3e8ff;
+}
+.massive-log .sync-update.fetching {
+border-left-color: #06b6d4;
+background: #ecfeff;
+}
+.massive-log .sync-update.summary {
+border-left-color: #10b981;
+background: #ecfdf5;
+font-weight: 600;
+}
+/* Compact status display */
+.compact-status {
+display: flex;
+flex-wrap: wrap;
+gap: 16px;
+align-items: center;
+font-size: 18px;
+}
+.compact-status .sync-stats {
+color: #666;
+font-size: 16px;
+font-weight: 500;
+}
+.compact-status .text-red {
+font-weight: 600;
+font-size: 16px;
+}
+/* Scrollbar styling */
+.massive-log::-webkit-scrollbar {
+width: 8px;
+}
+.massive-log::-webkit-scrollbar-track {
+background: rgba(0,0,0,0.05);
+border-radius: 4px;
+}
+.massive-log::-webkit-scrollbar-thumb {
+background: rgba(0,0,0,0.2);
+border-radius: 4px;
+}
+.massive-log::-webkit-scrollbar-thumb:hover {
+background: rgba(0,0,0,0.4);
+}
+/* ===== TEST STATE SWITCHERS ===== */
+.state-switcher,
+.mode-switcher {
+position: fixed;
+top: 20px;
+right: 20px;
+background: white;
+border: 2px solid #ddd;
+border-radius: 8px;
+padding: 16px;
+box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+z-index: 1000;
+min-width: 200px;
+}
+.state-switcher h3,
+.mode-switcher h3 {
+margin-bottom: 12px;
+font-size: 16px;
+color: var(--color-text-primary);
+}
+.state-switcher h4,
+.mode-switcher h4 {
+margin-bottom: 8px;
+font-size: 14px;
+color: var(--color-text-primary);
+}
+.state-switcher button,
+.mode-switcher button {
+display: block;
+width: 100%;
+margin-bottom: 8px;
+padding: 8px 12px;
+border: 1px solid #ddd;
+background: white;
+cursor: pointer;
+border-radius: 4px;
+font-size: 14px;
+transition: all 0.2s ease;
+}
+.state-switcher button:hover,
+.mode-switcher button:hover {
+background: #f5f5f5;
+}
+.state-switcher button.active,
+.mode-switcher button.active {
+background: var(--color-synced-bg);
+color: white;
+border-color: var(--color-synced-bg);
+}
+.state-switcher hr,
+.mode-switcher hr {
+margin: 12px 0;
+border: none;
+border-top: 1px solid #ddd;
+}
+/* ===== RESPONSIVE DESIGN ===== */
 @media (max-width: 768px) {
-  .dashboard-section {
-    padding: 0 var(--container-padding-mobile);
-  }
-  
-  .section-content {
-    font-size: calc(var(--font-size-huge) * 0.7);
-  }
-  
-  .state-switcher,
-  .mode-switcher {
-    top: 10px;
-    right: 10px;
-    padding: 12px;
-    min-width: 180px;
-  }
+.dashboard-section {
+padding: 0 var(--container-padding-mobile);
 }
-
+.section-content {
+font-size: calc(var(--font-size-huge) * 0.7);
+}
+.state-switcher,
+.mode-switcher {
+top: 10px;
+right: 10px;
+padding: 12px;
+min-width: 180px;
+}
+.compact-status {
+font-size: 16px;
+gap: 12px;
+}
+.compact-status .sync-stats {
+font-size: 14px;
+}
+.dashboard-section.section-4567.log-section-massive .massive-log {
+font-size: 12px;
+padding: 12px;
+min-height: 250px;
+}
+.dashboard-section.section-4567.log-section-massive .massive-log .sync-update {
+padding: 6px 10px;
+font-size: 11px;
+}
+}
 @media (max-width: 480px) {
-  .dashboard-section {
-    padding: 0 var(--container-padding-mobile);
-  }
-  
-  .section-content {
-    font-size: calc(var(--font-size-huge) * 0.5);
-  }
-  
-  .state-switcher,
-  .mode-switcher {
-    top: 5px;
-    right: 5px;
-    padding: 8px;
-    min-width: 160px;
-  }
-  
-  .state-switcher h3,
-  .mode-switcher h3 {
-    font-size: 14px;
-  }
-  
-  .state-switcher button,
-  .mode-switcher button {
-    font-size: 12px;
-    padding: 6px 8px;
-  }
+.dashboard-section {
+padding: 0 var(--container-padding-mobile);
 }
-
-/* Remove old dashboard styles that conflict */
+.section-content {
+font-size: calc(var(--font-size-huge) * 0.5);
+}
+.state-switcher,
+.mode-switcher {
+top: 5px;
+right: 5px;
+padding: 8px;
+min-width: 160px;
+}
+.state-switcher h3,
+.mode-switcher h3 {
+font-size: 14px;
+}
+.state-switcher button,
+.mode-switcher button {
+font-size: 12px;
+padding: 6px 8px;
+}
+}
+/* ===== ACCESSIBILITY & REDUCED MOTION ===== */
+@media (prefers-reduced-motion: reduce) {
+.status-indicator,
+.section-action-button,
+.action-button {
+animation: none;
+transition: none;
+}
+.action-button:hover,
+.section-action-button:hover {
+transform: none;
+}
+}
+/* ===== LEGACY COMPATIBILITY ===== /
+/ Reset old dashboard styles that might conflict */
 .dashboard {
-  /* Reset old styles */
-  min-height: auto;
-  display: block;
-  flex-direction: initial;
-  justify-content: initial;
-  align-items: initial;
-  padding: 0;
-  position: static;
+min-height: auto;
+display: block;
+flex-direction: initial;
+justify-content: initial;
+align-items: initial;
+padding: 0;
+position: static;
 }
-
 /* Hide decorative lines in 8-section layout */
 .dashboard-8-section .decorative-lines {
-  display: none;
+display: none;
 }
-
-/* Status Indicator - Now Positioned in Section */
-.status-indicator {
-  width: clamp(80px, 20vw, 120px);
-  height: clamp(16px, 4vw, 24px);
-  border-radius: 2px;
-  transition: all var(--transition-normal);
-}
-
-.status-indicator.synced {
-  background-color: var(--color-synced-bg);
-}
-
-.status-indicator.not-synced {
-  background-color: var(--color-not-synced-bg);
-}
-
-.status-indicator.processing {
-  background: linear-gradient(45deg, #667eea, #764ba2);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
-}
-
 /* Ensure old styles don't interfere */
 .count-display,
 .status-message,
 .dashboard-actions {
-  margin: 0;
-  padding: 0;
-  background: none;
-  border-radius: 0;
+margin: 0;
+padding: 0;
+background: none;
+border-radius: 0;
 }
-
 .count-display:hover {
-  transform: none;
+transform: none;
 }
-
 .action-button {
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  font-size: inherit;
-  color: inherit;
-  cursor: pointer;
-  transition: opacity var(--transition-fast);
+margin: 0;
+padding: 0;
+border: none;
+background: none;
+font-size: inherit;
+color: inherit;
+cursor: pointer;
+transition: opacity var(--transition-fast);
 }
-
 .action-button:hover {
-  opacity: 0.8;
-  transform: none;
-}
-
-/* Reduced motion support */
-@media (prefers-reduced-motion: reduce) {
-  .status-indicator,
-  .section-action-button,
-  .action-button {
-    animation: none !important;
-    transition: none !important;
-  }
-  
-  .action-button:hover,
-  .section-action-button:hover {
-    transform: none;
-  }
-}
-
-/* Safe Log Display Enhancement - Add to end of dashboard.css */
-/* Works with existing styles, no conflicts */
-
-/* Only enhance what needs fixing without overriding existing rules */
-.dashboard-section.section-7 .status-display {
-  /* Improve readability without conflicting with existing 12px/1.3 */
-  min-height: 80px; /* Ensure minimum readable space */
-  max-height: calc(100vh / 8 - 20px); /* Use available section height */
-}
-
-/* Individual log messages - enhance existing sync-update class */
-.sync-update {
-  /* Only add what's missing, don't override dashboard.css rules */
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  display: block;
-  white-space: pre-wrap; /* Preserve formatting */
-}
-
-/* Better scrollbar for the log area specifically */
-.dashboard-section.section-7 .status-display::-webkit-scrollbar {
-  width: 4px; /* Thin scrollbar to save space */
-}
-
-.dashboard-section.section-7 .status-display::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.05);
-  border-radius: 2px;
-}
-
-.dashboard-section.section-7 .status-display::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.2);
-  border-radius: 2px;
-}
-
-.dashboard-section.section-7 .status-display::-webkit-scrollbar-thumb:hover {
-  background: rgba(0,0,0,0.4);
-}
-
-/* Ensure the log section uses available space efficiently */
-.dashboard-section.section-7 .section-content {
-  padding: 8px 12px; /* Slightly tighter padding for more log space */
-  height: 100%;
-}
-
-/* Make sure log messages are visible by adding slight spacing */
-.dashboard-section.section-7 .sync-update {
-  margin-bottom: 2px; /* Just a tiny bit of breathing room */
-}
-
-/* LOG-FOCUSED SYNC LAYOUT - Add to the end of dashboard.css */
-
-/* Make section 4567 span 4 sections worth of space */
-.dashboard-8-section .section-4567 {
-  grid-row: 8 / 16; /* Spans from grid line 8 to 16 (sections 4,5,6,7 + dividers) */
-}
-
-/* Massive log area styling */
-.log-section-massive {
-  min-height: 300px;
-  max-height: 60vh; /* Take up to 60% of viewport height */
-}
-
-.log-section-massive .section-content {
-  height: 100%;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Enhanced log display */
-.massive-log {
-  height: 100% !important;
-  min-height: 280px;
-  max-height: none;
-  overflow-y: auto;
-  background: #fafafa;
-  border: 1px solid #e1e1e1;
-  border-radius: 6px;
-  padding: 16px;
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
-  font-size: 14px;
-  line-height: 1.4;
-  flex: 1;
-}
-
-/* Compact status bar styling */
-.compact-status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
-  font-size: 18px;
-}
-
-.compact-status .sync-stats {
-  color: #666;
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.compact-status .text-red {
-  font-weight: 600;
-  font-size: 16px;
-}
-
-/* Enhanced log message styling */
-.massive-log .sync-update {
-  margin-bottom: 6px;
-  padding: 10px 14px;
-  border-radius: 4px;
-  border-left: 4px solid #ddd;
-  background: white;
-  font-size: 13px;
-  line-height: 1.4;
-  word-wrap: break-word;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-}
-
-/* Message type colors */
-.massive-log .sync-update.info { 
-  border-left-color: #3b82f6; 
-  background: #eff6ff;
-}
-
-.massive-log .sync-update.success,
-.massive-log .sync-update.added { 
-  border-left-color: #22c55e; 
-  background: #f0fdf4;
-}
-
-.massive-log .sync-update.updated { 
-  border-left-color: #f59e0b; 
-  background: #fffbeb;
-}
-
-.massive-log .sync-update.deleted { 
-  border-left-color: #ef4444; 
-  background: #fef2f2;
-}
-
-.massive-log .sync-update.failed,
-.massive-log .sync-update.error { 
-  border-left-color: #ef4444; 
-  background: #fef2f2;
-  font-weight: 500;
-}
-
-.massive-log .sync-update.warning { 
-  border-left-color: #f59e0b; 
-  background: #fffbeb;
-}
-
-.massive-log .sync-update.complete { 
-  border-left-color: #22c55e; 
-  background: #f0fdf4; 
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.massive-log .sync-update.analysis,
-.massive-log .sync-update.processing { 
-  border-left-color: #8b5cf6; 
-  background: #f3e8ff;
-}
-
-.massive-log .sync-update.fetching { 
-  border-left-color: #06b6d4; 
-  background: #ecfeff;
-}
-
-.massive-log .sync-update.summary { 
-  border-left-color: #10b981; 
-  background: #ecfdf5; 
-  font-weight: 600;
-}
-
-/* Better scrollbar for the massive log */
-.massive-log::-webkit-scrollbar {
-  width: 8px;
-}
-
-.massive-log::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.05);
-  border-radius: 4px;
-}
-
-.massive-log::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.2);
-  border-radius: 4px;
-}
-
-.massive-log::-webkit-scrollbar-thumb:hover {
-  background: rgba(0,0,0,0.4);
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .compact-status {
-    font-size: 16px;
-    gap: 12px;
-  }
-  
-  .compact-status .sync-stats {
-    font-size: 14px;
-  }
-  
-  .massive-log {
-    font-size: 12px;
-    padding: 12px;
-  }
-  
-  .massive-log .sync-update {
-    padding: 8px 10px;
-    font-size: 12px;
-  }
-}
-
-/* PROPER LOG FIX - Add to end of dashboard.css */
-/* Higher specificity to override existing .log-section .status-display rules */
-
-/* Override the existing log-section status-display rules for massive log */
-.dashboard-section.section-4567.log-section-massive .status-display.massive-log {
-  display: block;
-  height: 300px;
-  min-height: 300px;
-  max-height: none;
-  overflow-y: auto;
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
-  border-radius: 6px;
-  padding: 16px;
-  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
-  font-size: 13px; /* Override the 12px from .log-section .status-display */
-  line-height: 1.4; /* Override the 1.3 from .log-section .status-display */
-}
-
-/* Style the individual sync messages with higher specificity */
-.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update {
-  display: block;
-  margin-bottom: 4px;
-  padding: 8px 12px;
-  background: white;
-  border-left: 3px solid #007bff;
-  border-radius: 3px;
-  font-size: 12px;
-  line-height: 1.3;
-  color: #333;
-  word-wrap: break-word;
-}
-
-/* Message type colors with high specificity */
-.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.info {
-  border-left-color: #3b82f6;
-  background: #eff6ff;
-}
-
-.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.success,
-.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.added {
-  border-left-color: #22c55e;
-  background: #f0fdf4;
-}
-
-.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.processing {
-  border-left-color: #8b5cf6;
-  background: #f3e8ff;
-}
-
-.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.error,
-.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.failed {
-  border-left-color: #ef4444;
-  background: #fef2f2;
-}
-
-.dashboard-section.section-4567.log-section-massive .status-display.massive-log .sync-update.complete {
-  border-left-color: #22c55e;
-  background: #f0fdf4;
-  font-weight: 600;
-}
-
-/* Ensure the section container is properly sized */
-.dashboard-section.section-4567.log-section-massive {
-  min-height: 350px;
-}
-
-.dashboard-section.section-4567.log-section-massive .section-content {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 12px;
+opacity: 0.8;
+transform: none;
 }
