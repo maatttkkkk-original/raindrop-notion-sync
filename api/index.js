@@ -747,7 +747,7 @@ fastify.get('/sync', async (req, reply) => {
   });
 });
 
-// ENHANCED /sync-stream route with better error handling and heartbeat
+// ENHANCED /sync-stream route with better error handling
 fastify.get('/sync-stream', async (req, reply) => {
   const password = req.query.password || '';
   const mode = req.query.mode || 'smart';
@@ -782,14 +782,11 @@ fastify.get('/sync-stream', async (req, reply) => {
   console.log(`🔗 Sync request: ${mode} (Stream ID: ${streamId})`);
   send({ message: '🔗 Connected to sync stream', type: 'info' });
 
-
-
   // Check if sync already running
   if (GLOBAL_SYNC_LOCK) {
     send({ message: '⏸️ Sync already running, please wait...', type: 'waiting' });
     
     // Clean up this stream since we can't start sync
-
     setTimeout(() => {
       activeStreams.delete(streamId);
       try {
@@ -816,14 +813,14 @@ fastify.get('/sync-stream', async (req, reply) => {
   };
 
   // Choose and start sync with chunking support
-let syncPromise;
-if (mode === 'full') {
-  const startIndex = parseInt(req.query.startIndex || '0', 10);
-  const chunkSize = parseInt(req.query.chunkSize || '25', 10);
-  syncPromise = performFullSync(startIndex, chunkSize, limit);
-} else {
-  syncPromise = performSmartIncrementalSync(30);
-}
+  let syncPromise;
+  if (mode === 'full') {
+    const startIndex = parseInt(req.query.startIndex || '0', 10);
+    const chunkSize = parseInt(req.query.chunkSize || '25', 10);
+    syncPromise = performFullSync(startIndex, chunkSize, limit);
+  } else {
+    syncPromise = performSmartIncrementalSync(30);
+  }
 
   // Handle sync completion
   syncPromise
@@ -840,7 +837,6 @@ if (mode === 'full') {
       SYNC_LOCK_ID = null;
       currentSync = null;
       
-      clearInterval(heartbeatInterval);
       activeStreams.delete(streamId);
       
       try {
