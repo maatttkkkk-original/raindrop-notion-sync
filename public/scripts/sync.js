@@ -140,8 +140,9 @@ class ChunkedSyncManager {
           }
         }, 2000 * this.connectionRetries);
       } else {
-        this.updateProgressText('Connection failed - stopping sync');
-        this.stopSyncWithError('Connection failed after multiple attempts');
+        console.log('🛑 Max retries reached, stopping sync cleanly');
+        this.updateProgressText('Connection failed - sync stopped');
+        this.stopSyncWithError('Connection failed after 2 retry attempts');
       }
     };
   }
@@ -205,6 +206,7 @@ class ChunkedSyncManager {
     
     if (data.hasMore && this.syncInProgress) {
       // Continue with next chunk
+      const nextChunkNumber = Math.floor(this.currentIndex / this.chunkSize) + 1;
       console.log(`🔄 Starting next chunk ${nextChunkNumber} from index ${this.currentIndex}`);
       
       // Small delay before next chunk - show continuing message
