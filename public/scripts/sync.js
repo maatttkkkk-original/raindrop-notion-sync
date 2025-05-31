@@ -1,14 +1,23 @@
 /**
- * FIXED Sync Manager - Works with existing Fastify backend
- * Handles: Progress messages, stop button, connection management
+ * CHUNKED Sync Manager - Handles 25-item chunks with state tracking
+ * Features: Progress across chunks, fail tracking, clean stop logic
  */
 
-class SyncManager {
+class ChunkedSyncManager {
   constructor() {
     this.evtSource = null;
     this.syncInProgress = false;
     this.connectionRetries = 0;
-    this.maxRetries = 3;
+    this.maxRetries = 2; // Reduced for clean failure
+    
+    // Chunk state tracking
+    this.currentIndex = 0;
+    this.totalItems = 0;
+    this.chunkSize = 25;
+    this.totalCreated = 0;
+    this.totalUpdated = 0;
+    this.totalFailed = 0;
+    this.totalSkipped = 0;
     
     this.init();
   }
@@ -17,7 +26,7 @@ class SyncManager {
     Utils.ready(() => {
       this.bindEvents();
       this.setupUI();
-      console.log('🚀 Fixed SyncManager initialized');
+      console.log('🚀 Chunked SyncManager initialized');
     });
   }
 
@@ -28,7 +37,7 @@ class SyncManager {
     if (syncBtn) {
       syncBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        this.startSync();
+        this.startChunkedSync();
       });
     }
     
@@ -47,11 +56,36 @@ class SyncManager {
   setupUI() {
     this.updateProgressBar(0);
     this.hideStopButton();
+    this.resetCounters();
   }
 
-  startSync() {
+  resetCounters() {
+    this.currentIndex = 0;
+    this.totalItems = 0;
+    this.totalCreated = 0;
+    this.totalUpdated = 0;
+    this.totalFailed = 0;
+    this.totalSkipped = 0;
+  }
+
+  startChunkedSync() {
     if (this.syncInProgress) {
       return;
+    }
+
+    this.resetCounters();
+    this.syncInProgress = true;
+    this.updateSyncButton(true);
+    this.showStopButton();
+    this.updateProgressText('Starting sync...');
+    
+    // Start with first chunk
+    this.processNextChunk();
+  }
+
+  processNextChunk() {
+    if (!this.syncInProgress) {
+      return; // Stop was called
     }
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -60,15 +94,16 @@ class SyncManager {
 
     if (!password) {
       alert('Password required');
+      this.stopSync();
       return;
     }
 
-    this.syncInProgress = true;
-    this.updateSyncButton(true);
-    this.showStopButton();
-    this.updateProgressText('Starting sync...');
+    const chunkNumber = Math.floor(this.currentIndex / this.chunkSize) + 1;
+    console.log(`🔄 Starting chunk ${chunkNumber} from index ${this.currentIndex}`);
     
-    const syncUrl = `/sync-stream?password=${encodeURIComponent(password)}&mode=${mode}&_t=${Date.now()}`;
+    this.updateProgressText(`Processing bookmarks...`);
+    
+    const syncUrl = `/sync-stream?password=${encodeURIComponent(password)}&mode=${mode}&startIndex=${this.currentIndex}&chunkSize=${this.chunkSize}&_t=${Date.now()}`;
     this.connectToSync(syncUrl);
   }
 
@@ -79,7 +114,7 @@ class SyncManager {
     this.evtSource = new EventSource(url);
     
     this.evtSource.onopen = () => {
-      console.log('✅ Connected');
+      console.log('✅ Connected to chunk');
       this.connectionRetries = 0;
     };
 
@@ -97,7 +132,7 @@ class SyncManager {
       
       if (this.connectionRetries < this.maxRetries) {
         this.connectionRetries++;
-        this.updateProgressText(`Reconnecting... (${this.connectionRetries}/${this.maxRetries})`);
+        this.updateProgressText(`Connection lost, retrying... (${this.connectionRetries}/${this.maxRetries})`);
         
         setTimeout(() => {
           if (this.syncInProgress) {
@@ -105,8 +140,8 @@ class SyncManager {
           }
         }, 2000 * this.connectionRetries);
       } else {
-        this.updateProgressText('Connection failed');
-        this.stopSync();
+        this.updateProgressText('Connection failed - stopping sync');
+        this.stopSyncWithError('Connection failed after multiple attempts');
       }
     };
   }
@@ -117,32 +152,97 @@ class SyncManager {
     // Skip heartbeat messages
     if (data.type === 'heartbeat') return;
     
-    // Handle progress messages from backend (XX/ZZ complete)
+    // Handle progress messages (XX/ZZ complete)
     if (data.type === 'progress') {
       this.updateProgress(data.completed, data.total, data.percentage);
       return;
     }
     
-    // Handle regular sync messages
-    if (data.message) {
-      this.updateProgressText(data.message);
+    // Handle chunk completion
+    if (data.chunkComplete) {
+      this.handleChunkCompletion(data);
+      return;
     }
     
-    // Handle completion
-    if (data.complete) {
-      this.handleCompletion(data);
+    // Handle regular sync messages
+    if (data.message) {
+      console.log(`📝 Status: ${data.message}`);
     }
   }
 
-  // Update XX/ZZ complete every 20 bookmarks
+  // Update progress: "25/1365 complete"
   updateProgress(completed, total, percentage) {
-    // Update progress text: "20/1300 complete"
-    this.updateProgressText(`${completed}/${total} complete`);
+    this.totalItems = total; // Update total if we didn't have it
     
-    // Update progress bar width
+    this.updateProgressText(`${completed}/${total} complete`);
     this.updateProgressBar(percentage);
     
-    console.log(`📊 Progress: ${completed}/${total} (${percentage}%)`);
+    console.log(`📊 Overall Progress: ${completed}/${total} (${percentage}%)`);
+  }
+
+  handleChunkCompletion(data) {
+    console.log('🎯 Chunk completed:', data);
+    
+    // Accumulate counts across chunks
+    if (data.chunkCounts) {
+      this.totalCreated += data.chunkCounts.created || 0;
+      this.totalUpdated += data.chunkCounts.updated || 0;
+      this.totalFailed += data.chunkCounts.failed || 0;
+      this.totalSkipped += data.chunkCounts.skipped || 0;
+    }
+    
+    // Update current position
+    if (data.nextIndex !== undefined) {
+      this.currentIndex = data.nextIndex;
+    }
+    
+    // Update total items if provided
+    if (data.totalItems) {
+      this.totalItems = data.totalItems;
+    }
+    
+    this.cleanup(); // Close current connection
+    
+    if (data.hasMore && this.syncInProgress) {
+      // Continue with next chunk
+      console.log(`🔄 Starting next chunk ${nextChunkNumber} from index ${this.currentIndex}`);
+      
+      // Small delay before next chunk - show continuing message
+      this.updateProgressText(`Continuing sync...`);
+      
+      setTimeout(() => {
+        if (this.syncInProgress) {
+          this.processNextChunk();
+        }
+      }, 1000);
+    } else {
+      // All chunks complete
+      this.handleSyncCompletion();
+    }
+  }
+
+  handleSyncCompletion() {
+    console.log('🎉 All chunks completed!');
+    
+    this.syncInProgress = false;
+    this.updateSyncButton(false);
+    this.hideStopButton();
+    this.updateProgressBar(100);
+    
+    const totalProcessed = this.totalCreated + this.totalUpdated + this.totalFailed + this.totalSkipped;
+    this.updateProgressText(`Sync completed! ${totalProcessed}/${this.totalItems} processed`);
+    
+    // Log final results
+    console.log('📊 Final Results:', {
+      total: this.totalItems,
+      processed: totalProcessed,
+      created: this.totalCreated,
+      updated: this.totalUpdated,
+      failed: this.totalFailed,
+      skipped: this.totalSkipped
+    });
+    
+    this.cleanup();
   }
 
   updateProgressText(text) {
@@ -188,25 +288,24 @@ class SyncManager {
     }
   }
 
-  handleCompletion(data) {
+  stopSync() {
+    console.log('🛑 Stopping chunked sync');
     this.syncInProgress = false;
     this.updateSyncButton(false);
     this.hideStopButton();
-    this.updateProgressText('Sync completed!');
-    this.updateProgressBar(100);
-    this.cleanup();
     
-    if (data.finalCounts) {
-      console.log('📊 Final results:', data.finalCounts);
-    }
+    const processed = this.totalCreated + this.totalUpdated + this.totalFailed + this.totalSkipped;
+    this.updateProgressText(`Sync stopped at ${this.currentIndex}/${this.totalItems} (${processed} processed)`);
+    
+    this.cleanup();
   }
 
-  stopSync() {
-    console.log('🛑 Stopping sync');
+  stopSyncWithError(error) {
+    console.error('🚨 Stopping sync due to error:', error);
     this.syncInProgress = false;
     this.updateSyncButton(false);
     this.hideStopButton();
-    this.updateProgressText('Sync stopped');
+    this.updateProgressText(`Sync failed: ${error}`);
     this.cleanup();
   }
 
@@ -222,7 +321,13 @@ class SyncManager {
   getStatus() {
     return {
       running: this.syncInProgress,
-      connected: !!this.evtSource
+      connected: !!this.evtSource,
+      currentIndex: this.currentIndex,
+      totalItems: this.totalItems,
+      totalCreated: this.totalCreated,
+      totalUpdated: this.totalUpdated,
+      totalFailed: this.totalFailed,
+      totalSkipped: this.totalSkipped
     };
   }
 
@@ -231,14 +336,14 @@ class SyncManager {
   }
 }
 
-// Initialize sync manager
+// Initialize chunked sync manager
 Utils.ready(() => {
   if (document.getElementById('syncBtn')) {
     if (window.syncManager) {
       window.syncManager.cleanup();
     }
     
-    window.syncManager = new SyncManager();
-    console.log('🎯 Fixed SyncManager ready');
+    window.syncManager = new ChunkedSyncManager();
+    console.log('🎯 Chunked SyncManager ready');
   }
 });

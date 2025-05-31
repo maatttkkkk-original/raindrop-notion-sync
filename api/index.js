@@ -105,10 +105,10 @@ fastify.register(require('@fastify/static'), {
   prefix: '/public/'
 });
 
-// ENHANCED MODE 1: FULL SYNC with Loop Protection (NO DELETIONS)
-async function performFullSync(limit = 0) {
+// MODE 1 - CHUNKED MODE: FULL SYNC with Vercel-Safe Chunks (NO DELETIONS)
+async function performFullSync(startIndex = 0, chunkSize = 25, limit = 0) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
-  console.log(`Full Sync starting - Lock ID: ${lockId} (NO DELETIONS)`);
+  console.log(`Chunked Full Sync starting - Lock ID: ${lockId}, startIndex: ${startIndex}, chunkSize: ${chunkSize}`);
   
   let createdCount = 0;
   let updatedCount = 0;
@@ -116,9 +116,6 @@ async function performFullSync(limit = 0) {
   let loopPreventionSkips = 0;
   
   try {
-    // Clear operation log for fresh start
-    SYNC_OPERATION_LOG.clear();
-    
     // Helper to send progress updates
     const sendUpdate = (message, type = '') => {
       console.log(`[${lockId}] ${message}`);
@@ -146,69 +143,67 @@ async function performFullSync(limit = 0) {
       broadcastSSEData(updateData);
     };
     
-    // Helper to send batch progress updates (every 20 items)
-    const sendProgressUpdate = (completed, total) => {
-      const percentage = Math.round((completed / total) * 100);
-      console.log(`Progress: ${completed}/${total} (${percentage}%)`);
-      
-      const progressData = {
-        type: 'progress',
-        completed: completed,
-        total: total,
-        percentage: percentage,
-        counts: { 
-          created: createdCount, 
-          updated: updatedCount, 
-          failed: failedCount,
-          skipped: loopPreventionSkips 
-        }
-      };
-      
-      if (currentSync) {
-        currentSync.counts = progressData.counts;
-      }
-      
-      broadcastSSEData(progressData);
-    };
+    sendUpdate(`Starting chunk from index ${startIndex} (${chunkSize} items)`, 'info');
     
-    sendUpdate('Starting Full Sync with loop protection (no deletions)', 'info');
+    // === STEP 1: FETCH ALL RAINDROPS (once, but slice for chunk) ===
+    if (startIndex === 0) {
+      sendUpdate('Fetching all Raindrop bookmarks...', 'fetching');
+    } else {
+      sendUpdate(`Continuing from bookmark ${startIndex + 1}...`, 'info');
+    }
     
-    // === STEP 1: FETCH ALL RAINDROPS ===
-    sendUpdate('Fetching all Raindrop bookmarks...', 'fetching');
-    
-    let raindrops = [];
+    let allRaindrops = [];
     try {
-      raindrops = await getAllRaindrops(limit);
+      allRaindrops = await getAllRaindrops(limit);
     } catch (error) {
       throw new Error(`Failed to fetch raindrops: ${error.message}`);
     }
     
-    sendUpdate(`Found ${raindrops.length} Raindrop bookmarks to sync`, 'success');
+    // Slice for this chunk
+    const endIndex = Math.min(startIndex + chunkSize, allRaindrops.length);
+    const raindrops = allRaindrops.slice(startIndex, endIndex);
+    const totalRaindrops = allRaindrops.length;
+    
+    console.log(`Processing chunk: items ${startIndex + 1} to ${endIndex} of ${totalRaindrops}`);
+    sendUpdate(`Processing ${raindrops.length} bookmarks (${startIndex + 1} to ${endIndex} of ${totalRaindrops})`, 'processing');
     
     if (raindrops.length === 0) {
-      sendUpdate('No raindrops to sync. Process complete.', 'complete');
+      sendUpdate('No more raindrops to process in this chunk.', 'complete');
       broadcastSSEData({ 
         complete: true,
-        finalCounts: { created: createdCount, updated: updatedCount, failed: failedCount, skipped: loopPreventionSkips }
+        chunkComplete: true,
+        hasMore: false,
+        nextIndex: endIndex,
+        totalItems: totalRaindrops,
+        finalCounts: { created: 0, updated: 0, failed: 0, skipped: 0 }
       });
-      return { complete: true };
+      return { complete: true, hasMore: false };
     }
     
-    // === STEP 2: FETCH EXISTING NOTION PAGES ===
-    sendUpdate('Fetching existing Notion pages...', 'fetching');
-    
+    // === STEP 2: FETCH EXISTING NOTION PAGES (only if first chunk) ===
     let existingPages = [];
-    try {
-      existingPages = await getNotionPages();
-    } catch (error) {
-      throw new Error(`Failed to fetch existing Notion pages: ${error.message}`);
+    if (startIndex === 0) {
+      sendUpdate('Fetching existing Notion pages...', 'fetching');
+      
+      try {
+        existingPages = await getNotionPages();
+      } catch (error) {
+        throw new Error(`Failed to fetch existing Notion pages: ${error.message}`);
+      }
+      
+      sendUpdate(`Found ${existingPages.length} existing Notion pages`, 'success');
+    } else {
+      // For continuation chunks, get fresh Notion data to include newly created pages
+      sendUpdate('Refreshing Notion page data...', 'fetching');
+      try {
+        existingPages = await getNotionPages();
+      } catch (error) {
+        console.warn('Failed to refresh Notion pages, continuing with empty set');
+        existingPages = [];
+      }
     }
-    
-    sendUpdate(`Found ${existingPages.length} existing Notion pages`, 'success');
     
     // === STEP 3: BUILD NOTION LOOKUP MAPS ===
-    sendUpdate('Building comparison maps...', 'processing');
-    
     const notionUrlMap = new Map();
     const notionTitleMap = new Map();
     
@@ -224,22 +219,16 @@ async function performFullSync(limit = 0) {
       }
     }
     
-    sendUpdate(`Built lookup maps for comparison`, 'success');
+    // === STEP 4: PROCESS CHUNK OF RAINDROPS ===
+    sendUpdate(`Processing chunk: ${raindrops.length} bookmarks`, 'processing');
     
-    // === STEP 4: PROCESS ALL RAINDROPS (CREATE + UPDATE ONLY) ===
-    sendUpdate(`Processing ${raindrops.length} bookmarks (create + update only)...`, 'processing');
+    // Process items individually (no sub-batches for small chunks)
+    let processedInChunk = 0;
     
-    // PROVEN WORKING TIMING: Create in batches of 10 items per batch
-    const batches = chunkArray(raindrops, 10);
-    const batchCount = batches.length;
-    let totalProcessed = 0;
-    
-    for (let i = 0; i < batchCount; i++) {
-      const batch = batches[i];
-      sendUpdate(`Processing batch ${i + 1}/${batchCount} (${batch.length} pages)`, 'processing');
-      
-      for (const item of batch) {
-        try {
+    for (const item of raindrops) {
+      try {
+        // Add timeout wrapper for individual item processing
+        const processItem = async () => {
           const normUrl = normalizeUrl(item.link);
           const normTitle = normalizeTitle(item.title);
           
@@ -252,22 +241,18 @@ async function performFullSync(limit = 0) {
             if (isLoop) {
               loopPreventionSkips++;
               console.log(`Skipping update of "${item.title}" - potential loop detected`);
-              continue;
+              return 'skipped';
             }
             
-            try {
-              const success = await updateNotionPage(existingPage.id, item);
-              if (success) {
-                updatedCount++;
-                console.log(`Updated: "${item.title}"`);
-              } else {
-                failedCount++;
-                console.log(`Failed to update: "${item.title}"`);
-              }
-            } catch (updateError) {
+            const success = await updateNotionPage(existingPage.id, item);
+            if (success) {
+              updatedCount++;
+              console.log(`Updated: "${item.title}"`);
+              return 'updated';
+            } else {
               failedCount++;
-              console.log(`Error updating "${item.title}": ${updateError.message}`);
-              await new Promise(resolve => setTimeout(resolve, 400));
+              console.log(`Failed to update: "${item.title}"`);
+              return 'failed';
             }
           } else {
             // CREATE NEW PAGE
@@ -277,68 +262,82 @@ async function performFullSync(limit = 0) {
             if (isLoop) {
               loopPreventionSkips++;
               console.log(`Skipping create of "${item.title}" - potential loop detected`);
-              continue;
+              return 'skipped';
             }
             
-            try {
-              const result = await createNotionPage(item);
-              if (result.success) {
-                createdCount++;
-                console.log(`Created: "${item.title}"`);
-              } else {
-                failedCount++;
-                console.log(`Failed to create: "${item.title}"`);
-              }
-            } catch (createError) {
+            const result = await createNotionPage(item);
+            if (result.success) {
+              createdCount++;
+              console.log(`Created: "${item.title}"`);
+              return 'created';
+            } else {
               failedCount++;
-              console.log(`Error creating "${item.title}": ${createError.message}`);
-              await new Promise(resolve => setTimeout(resolve, 400));
+              console.log(`Failed to create: "${item.title}"`);
+              return 'failed';
             }
           }
-          
-          totalProcessed++;
-          
-          // Send progress update every 20 items
-          if (totalProcessed % 20 === 0 || totalProcessed === raindrops.length) {
-            sendProgressUpdate(totalProcessed, raindrops.length);
-          }
-          
-          // PROVEN WORKING DELAY: 200ms between operations
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
-        } catch (error) {
-          failedCount++;
-          console.log(`Error processing "${item.title}": ${error.message}`);
-          await new Promise(resolve => setTimeout(resolve, 400));
-        }
-      }
-      
-      // PROVEN WORKING DELAY: 2000ms between batches
-      if (i < batchCount - 1) {
-        sendUpdate(`Batch ${i + 1} complete, waiting before next batch...`, 'info');
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        };
+        
+        // Process item with 8 second timeout (shorter for chunks)
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Item processing timeout')), 8000);
+        });
+        
+        const result = await Promise.race([processItem(), timeoutPromise]);
+        processedInChunk++;
+        
+        console.log(`Processed item ${startIndex + processedInChunk}: "${item.title}" - ${result}`);
+        
+        // PROVEN WORKING DELAY: 200ms between operations
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+      } catch (error) {
+        // Individual item error handling
+        failedCount++;
+        processedInChunk++;
+        
+        console.error(`❌ Error processing item ${startIndex + processedInChunk} "${item.title}":`, error.message);
+        sendUpdate(`Failed item ${startIndex + processedInChunk}: "${item.title}" - ${error.message}`, 'failed');
+        
+        // Continue with next item after error
+        await new Promise(resolve => setTimeout(resolve, 400));
       }
     }
     
-    // Send final progress update
-    sendProgressUpdate(totalProcessed, raindrops.length);
-    
-    // === FINAL SUMMARY ===
+    // === CHUNK COMPLETION ===
+    const chunkEndIndex = startIndex + processedInChunk;
+    const hasMore = chunkEndIndex < totalRaindrops;
     const duration = SYNC_START_TIME ? Math.round((Date.now() - SYNC_START_TIME) / 1000) : 0;
     
-    sendUpdate(`Full Sync completed in ${duration}s!`, 'complete');
-    sendUpdate(`Results: ${createdCount} created, ${updatedCount} updated, ${failedCount} failed, ${loopPreventionSkips} loop-prevention skips`, 'summary');
+    sendUpdate(`Chunk complete: ${processedInChunk} items processed in ${duration}s`, 'complete');
+    sendUpdate(`Chunk results: ${createdCount} created, ${updatedCount} updated, ${failedCount} failed, ${loopPreventionSkips} skipped`, 'summary');
     
-    console.log(`[${lockId}] FULL SYNC COMPLETE: ${duration}s`);
+    console.log(`[${lockId}] CHUNK COMPLETE: ${duration}s, processed ${chunkEndIndex}/${totalRaindrops}`);
     
-    if (currentSync) {
-      currentSync.completed = true;
-      currentSync.isRunning = false;
-    }
+    // Send progress update with chunk completion
+    const progressData = {
+      type: 'progress',
+      completed: chunkEndIndex,
+      total: totalRaindrops,
+      percentage: Math.round((chunkEndIndex / totalRaindrops) * 100),
+      counts: { 
+        created: createdCount, 
+        updated: updatedCount, 
+        failed: failedCount,
+        skipped: loopPreventionSkips 
+      }
+    };
     
+    broadcastSSEData(progressData);
+    
+    // Send chunk completion data
     broadcastSSEData({ 
-      complete: true,
-      finalCounts: { 
+      complete: !hasMore, // Only complete if no more chunks
+      chunkComplete: true,
+      hasMore: hasMore,
+      nextIndex: chunkEndIndex,
+      totalItems: totalRaindrops,
+      chunkCounts: { 
         created: createdCount, 
         updated: updatedCount, 
         failed: failedCount, 
@@ -348,14 +347,28 @@ async function performFullSync(limit = 0) {
       duration
     });
     
-    return { complete: true };
+    if (currentSync) {
+      currentSync.completed = !hasMore;
+      currentSync.isRunning = hasMore;
+      currentSync.counts = { created: createdCount, updated: updatedCount, failed: failedCount, skipped: loopPreventionSkips };
+    }
+    
+    return { 
+      complete: !hasMore, 
+      hasMore: hasMore, 
+      nextIndex: chunkEndIndex,
+      totalItems: totalRaindrops,
+      counts: { created: createdCount, updated: updatedCount, failed: failedCount, skipped: loopPreventionSkips }
+    };
     
   } catch (error) {
-    console.error(`[${lockId}] FULL SYNC ERROR:`, error);
+    console.error(`[${lockId}] CHUNKED SYNC ERROR:`, error);
     broadcastSSEData({
-      message: `Full Sync failed: ${error.message}`,
+      message: `Chunked sync failed: ${error.message}`,
       type: 'failed',
-      complete: true
+      complete: true,
+      chunkComplete: true,
+      hasMore: false
     });
     throw error;
   }
@@ -801,13 +814,15 @@ fastify.get('/sync-stream', async (req, reply) => {
     counts: {}
   };
 
-  // Choose and start sync (NO RESET MODE - ONLY FULL OR SMART)
-  let syncPromise;
-  if (mode === 'full') {
-    syncPromise = performFullSync(limit);
-  } else {
-    syncPromise = performSmartIncrementalSync(30);
-  }
+  // Choose and start sync with chunking support
+let syncPromise;
+if (mode === 'full') {
+  const startIndex = parseInt(req.query.startIndex || '0', 10);
+  const chunkSize = parseInt(req.query.chunkSize || '25', 10);
+  syncPromise = performFullSync(startIndex, chunkSize, limit);
+} else {
+  syncPromise = performSmartIncrementalSync(30);
+}
 
   // Handle sync completion
   syncPromise
