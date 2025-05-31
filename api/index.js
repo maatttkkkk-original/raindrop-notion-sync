@@ -105,7 +105,7 @@ fastify.register(require('@fastify/static'), {
   prefix: '/public/'
 });
 
-// MODE 1 - CHUNKED MODE: FULL SYNC with Vercel-Safe Chunks (NO DELETIONS)
+// MODE 1 - FULL SYNC with Vercel-Safe Chunks (NO DELETIONS)
 async function performFullSync(startIndex = 0, chunkSize = 25, limit = 0) {
   const lockId = currentSync ? currentSync.lockId : 'unknown';
   console.log(`Chunked Full Sync starting - Lock ID: ${lockId}, startIndex: ${startIndex}, chunkSize: ${chunkSize}`);
@@ -222,11 +222,14 @@ async function performFullSync(startIndex = 0, chunkSize = 25, limit = 0) {
     // === STEP 4: PROCESS CHUNK OF RAINDROPS ===
     sendUpdate(`Processing chunk: ${raindrops.length} bookmarks`, 'processing');
     
-    // Process items individually (no sub-batches for small chunks)
+    // Process items individually with 200ms delays
     let processedInChunk = 0;
     
     for (const item of raindrops) {
       try {
+        const currentItemNumber = startIndex + processedInChunk + 1;
+        console.log(`Processing item ${currentItemNumber}/${totalRaindrops}: "${item.title}"`);
+        
         // Add timeout wrapper for individual item processing
         const processItem = async () => {
           const normUrl = normalizeUrl(item.link);
@@ -247,11 +250,11 @@ async function performFullSync(startIndex = 0, chunkSize = 25, limit = 0) {
             const success = await updateNotionPage(existingPage.id, item);
             if (success) {
               updatedCount++;
-              console.log(`Updated: "${item.title}"`);
+              console.log(`✅ Updated item ${currentItemNumber}: "${item.title}"`);
               return 'updated';
             } else {
               failedCount++;
-              console.log(`Failed to update: "${item.title}"`);
+              console.log(`❌ Failed to update item ${currentItemNumber}: "${item.title}"`);
               return 'failed';
             }
           } else {
@@ -268,11 +271,11 @@ async function performFullSync(startIndex = 0, chunkSize = 25, limit = 0) {
             const result = await createNotionPage(item);
             if (result.success) {
               createdCount++;
-              console.log(`Created: "${item.title}"`);
+              console.log(`✅ Created item ${currentItemNumber}: "${item.title}"`);
               return 'created';
             } else {
               failedCount++;
-              console.log(`Failed to create: "${item.title}"`);
+              console.log(`❌ Failed to create item ${currentItemNumber}: "${item.title}"`);
               return 'failed';
             }
           }
@@ -286,7 +289,7 @@ async function performFullSync(startIndex = 0, chunkSize = 25, limit = 0) {
         const result = await Promise.race([processItem(), timeoutPromise]);
         processedInChunk++;
         
-        console.log(`Processed item ${startIndex + processedInChunk}: "${item.title}" - ${result}`);
+        console.log(`Item ${currentItemNumber} completed: ${result}`);
         
         // PROVEN WORKING DELAY: 200ms between operations
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -295,9 +298,10 @@ async function performFullSync(startIndex = 0, chunkSize = 25, limit = 0) {
         // Individual item error handling
         failedCount++;
         processedInChunk++;
+        const currentItemNumber = startIndex + processedInChunk;
         
-        console.error(`❌ Error processing item ${startIndex + processedInChunk} "${item.title}":`, error.message);
-        sendUpdate(`Failed item ${startIndex + processedInChunk}: "${item.title}" - ${error.message}`, 'failed');
+        console.error(`❌ Error processing item ${currentItemNumber} "${item.title}":`, error.message);
+        sendUpdate(`Failed item ${currentItemNumber}: "${item.title}" - ${error.message}`, 'failed');
         
         // Continue with next item after error
         await new Promise(resolve => setTimeout(resolve, 400));
