@@ -778,17 +778,14 @@ fastify.get('/sync-stream', async (req, reply) => {
   console.log(`🔗 Sync request: ${mode} (Stream ID: ${streamId})`);
   send({ message: '🔗 Connected to sync stream', type: 'info' });
 
-  // Setup heartbeat to keep connection alive
-  const heartbeatInterval = setInterval(() => {
-    send({ type: 'heartbeat', timestamp: Date.now() });
-  }, 30000); // Every 30 seconds
+
 
   // Check if sync already running
   if (GLOBAL_SYNC_LOCK) {
     send({ message: '⏸️ Sync already running, please wait...', type: 'waiting' });
     
     // Clean up this stream since we can't start sync
-    clearInterval(heartbeatInterval);
+
     setTimeout(() => {
       activeStreams.delete(streamId);
       try {
@@ -852,7 +849,6 @@ if (mode === 'full') {
     // Handle client disconnect
   req.raw.on('close', () => {
     console.log(`🔌 Client disconnected: ${streamId}`);
-    clearInterval(heartbeatInterval);
     activeStreams.delete(streamId);
     // Note: Don't stop sync - let it complete on server
   });
