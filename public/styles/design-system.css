@@ -3,7 +3,7 @@
 /* CSS Custom Properties */
 :root {
   /* Typography */
-  --font-primary: -helvetica, Arial, sans-serif;
+  --font-primary: -Helvetica, Arial, sans-serif;
   --font-size-huge: 72px;
   --font-size-large: 48px;
   --font-size-medium: 24px;
