@@ -780,7 +780,7 @@ fastify.get('/sync-stream', async (req, reply) => {
   };
 
   console.log(`🔗 Sync request: ${mode} (Stream ID: ${streamId})`);
-  send({ message: '🔗 Connected to sync stream', type: 'info' });
+  send({ message: ' Connected to sync stream', type: 'info' });
 
   // Check if sync already running
   if (GLOBAL_SYNC_LOCK) {
@@ -825,10 +825,10 @@ fastify.get('/sync-stream', async (req, reply) => {
   // Handle sync completion
   syncPromise
     .then(() => {
-      send({ message: '✅ Sync completed successfully', type: 'complete', complete: true });
+      send({ message: 'Sync completed successfully', type: 'complete', complete: true });
     })
     .catch(error => {
-      send({ message: `❌ Sync failed: ${error.message}`, type: 'error', complete: true });
+      send({ message: ` Sync failed: ${error.message}`, type: 'error', complete: true });
     })
     .finally(() => {
       // Clean up
